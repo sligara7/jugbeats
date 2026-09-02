@@ -20,6 +20,24 @@ import { render808, renderLead, degreeToHz, MINOR_STEPS, NEUTRAL } from './dsp.j
 /** Degrees we pre-render. One octave of the scale is more than four lanes need. */
 const DEGREES = MINOR_STEPS.map((_, i) => i);
 
+/**
+ * Per-voice level, applied on top of whatever the caller asks for.
+ *
+ * The drums sit a quarter down from where they were. Each one is normalised to
+ * near full scale on its own, which is right for a one-shot heard alone and too
+ * loud for four of them landing together over an 808 — the owner's verdict on
+ * playing it was simply that the drums were too much. Pulling them back here
+ * rather than at the master keeps the 808 and the lead where they are.
+ */
+const VOICE_GAIN = {
+  kick: 0.75,
+  snare: 0.75,
+  hat: 0.75,
+  openhat: 0.75,
+  cowbell: 0.75,
+  clap: 0.75,
+};
+
 /** Where the lead sits relative to the 808 — two octaves up, out of its way. */
 const LEAD_OCTAVES = 2;
 
@@ -125,11 +143,12 @@ export class Voices {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
-    if (gain === 1) {
+    const level = gain * (VOICE_GAIN[voice] ?? 1);
+    if (level === 1) {
       src.connect(this.master);
     } else {
       const g = this.ctx.createGain();
-      g.gain.value = gain;
+      g.gain.value = level;
       src.connect(g).connect(this.master);
     }
     // Never schedule into the past: iOS treats a negative start time as an
