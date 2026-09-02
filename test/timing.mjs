@@ -240,6 +240,54 @@ console.log('\na tap sounds once, never twice');
     Array.from({ length: 500 }, (_, i) => quantise(i * 0.13)).every((s) => s % GRID === 0));
 }
 
+console.log('\nlayers can be different lengths, and they meet again');
+
+{
+  // dec:layers-of-different-lengths. A three-bar bass under a four-bar drum
+  // part drifts apart and comes back together every twelve bars — the Kashmir
+  // effect, reached with no notion of a time signature anywhere in the code.
+  const t = new Track();
+  check('every round starts the same length', ROUNDS.every((r) => t.barsFor(r.id) === 4));
+  check('so everything meets every four bars', t.compositeBars === 4, `${t.compositeBars}`);
+
+  t.setBars('r3', 3);
+  check('a round can be made shorter', t.barsFor('r3') === 3);
+  check('and the others are untouched', t.barsFor('r1') === 4 && t.barsFor('r4') === 4);
+  check('three against four meet every twelve bars', t.compositeBars === 12,
+    `${t.compositeBars}`);
+
+  t.setBars('r4', 6);
+  check('three, four and six meet every twelve', t.compositeBars === 12, `${t.compositeBars}`);
+  t.setBars('r4', 4);
+
+  // The wrap is per round, which is the whole mechanism.
+  check('a short round wraps sooner', t.loopStepsFor('r3') === 48);
+  check('a long one does not', t.loopStepsFor('r1') === 64);
+  check('a note past a short round\'s end folds back into it',
+    t.record('r3', 0, 50) === 2, `landed on ${t.record('r3', 1, 50)}`);
+}
+
+console.log('\nshortening a round does not destroy what is past the end');
+
+{
+  // She has to be able to try three bars, dislike it, and go back without
+  // losing anything. Otherwise the control is a commitment rather than an
+  // experiment, and she will not touch it.
+  const t = new Track();
+  for (const s of [0, 16, 32, 48]) t.record('r3', 0, s); // one note per bar
+  check('four notes at four bars', t.count('r3') === 4);
+
+  t.setBars('r3', 2);
+  check('at two bars only the first half is audible', t.count('r3') === 2, `${t.count('r3')}`);
+  check('and nothing past the end is drawn',
+    t.runs('r3').every((r) => r.start < t.loopStepsFor('r3')));
+
+  t.setBars('r3', 4);
+  check('lengthening brings them all back, exactly', t.count('r3') === 4, `${t.count('r3')}`);
+  check('on the same beats they were on',
+    t.notes('r3').map((n) => n.slot).sort((a, b) => a - b).join(',') === '0,16,32,48');
+}
+
 console.log('\nquantising is symmetric');
 
 {

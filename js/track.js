@@ -124,6 +124,23 @@ export class Track {
    */
   constructor({ bars = 4 } = {}) {
     this.bars = bars;
+
+    /**
+     * How many bars each round loops over, INDEPENDENTLY (dec:layers-of-different-lengths).
+     *
+     * A three-bar bass under a four-bar drum loop drifts apart and comes back
+     * together every twelve bars. That is the Kashmir effect — a riff in 3/4
+     * over drums in 4/4 — reached without any notion of a time signature
+     * anywhere in the code. Loop length was already a number; making it a number
+     * per round is a far smaller change than meter would have been, and it
+     * sounds nearly identical.
+     *
+     * Two layers realign after the lowest common multiple of their lengths, so
+     * small numbers matter: three against four meet every twelve bars, which a
+     * listener hears as a pattern. Seven against eight take fifty-six, which a
+     * listener hears as drift.
+     */
+    this.roundBars = Object.fromEntries(ROUNDS.map((r) => [r.id, bars]));
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
@@ -150,6 +167,47 @@ export class Track {
     this.bpm = 100;
   }
 
+  /** Bars in one round's loop. */
+  barsFor(roundId) {
+    return this.roundBars[roundId] ?? this.bars;
+  }
+
+  /** Steps in one round's loop — the modulus its notes wrap at. */
+  loopStepsFor(roundId) {
+    return this.barsFor(roundId) * STEPS_PER_BAR;
+  }
+
+  /**
+   * Set a round's length.
+   *
+   * NON-DESTRUCTIVE ON THE WAY DOWN. Shortening leaves notes beyond the new end
+   * stored but unplayed, so lengthening again brings them back exactly. She can
+   * try three bars, dislike it, and go back to four without losing anything —
+   * which is the difference between an experiment and a commitment.
+   */
+  setBars(roundId, bars) {
+    if (!(roundId in this.roundBars)) return false;
+    this.roundBars[roundId] = Math.max(1, Math.min(8, Math.round(bars)));
+    return true;
+  }
+
+  /** The longest round. Used for sizing, never for wrapping. */
+  get maxLoopSteps() {
+    return Math.max(...ROUNDS.map((r) => this.loopStepsFor(r.id)));
+  }
+
+  /**
+   * When every round lines up again — the lowest common multiple of their
+   * lengths. Four fours meet every four bars; a three among them makes it
+   * twelve. This is the number that decides whether polymeter reads as a
+   * pattern or as the game being broken.
+   */
+  get compositeBars() {
+    return ROUNDS.map((r) => this.barsFor(r.id)).reduce(lcm, 1);
+  }
+
+  /** Kept for callers that only ever wanted somewhere to wrap; prefer
+   *  loopStepsFor, which knows which round is being asked about. */
   get loopSteps() {
     return this.bars * STEPS_PER_BAR;
   }
@@ -159,7 +217,8 @@ export class Track {
    * quantising late-only would teach her to rush.
    */
   record(roundId, lane, atStep) {
-    const slot = ((quantise(atStep) % this.loopSteps) + this.loopSteps) % this.loopSteps;
+    const loop = this.loopStepsFor(roundId);
+    const slot = ((quantise(atStep) % loop) + loop) % loop;
     this.events[roundId]?.add(slot * LANE_STRIDE + lane);
     return slot;
   }
@@ -167,7 +226,9 @@ export class Track {
   /** Out-of-range is refused rather than clamped: a silently clamped note lands
    *  on the wrong beat and sounds like a timing bug. */
   erase(roundId, lane, slot) {
-    if (slot < 0 || slot >= this.loopSteps) throw new RangeError(`step ${slot} outside loop`);
+    if (slot < 0 || slot >= this.loopStepsFor(roundId)) {
+      throw new RangeError(`step ${slot} outside this round's loop`);
+    }
     this.events[roundId]?.delete(slot * LANE_STRIDE + lane);
   }
 
@@ -179,10 +240,18 @@ export class Track {
     return out;
   }
 
+  /**
+   * The notes of a round that are INSIDE its current loop.
+   *
+   * Shortening a round leaves its far notes stored but out of range; they are
+   * filtered here rather than deleted, so lengthening brings them back exactly.
+   */
   notes(roundId) {
     const out = [];
+    const loop = this.loopStepsFor(roundId);
     for (const v of this.events[roundId] ?? []) {
-      out.push({ slot: Math.floor(v / LANE_STRIDE), lane: v % LANE_STRIDE });
+      const slot = Math.floor(v / LANE_STRIDE);
+      if (slot < loop) out.push({ slot, lane: v % LANE_STRIDE });
     }
     return out;
   }
@@ -208,7 +277,7 @@ export class Track {
     for (let lane = 0; lane < laneCount(roundId); lane++) {
       let start = null;
       let last = null;
-      for (let slot = 0; slot < this.loopSteps; slot += GRID) {
+      for (let slot = 0; slot < this.loopStepsFor(roundId); slot += GRID) {
         if (set.has(slot * LANE_STRIDE + lane)) {
           if (start === null) start = slot;
           last = slot;
@@ -233,17 +302,19 @@ export class Track {
 
     // A lane held the whole way round has no gap to start after, so give it one
     // — otherwise it is occupied everywhere and sounds nowhere.
-    const filled = this.loopSteps / GRID;
+    const loop = this.loopStepsFor(roundId);
+    const filled = loop / GRID;
     let n = 0;
-    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * LANE_STRIDE + lane)) n++;
+    for (let s = 0; s < loop; s += GRID) if (set.has(s * LANE_STRIDE + lane)) n++;
     if (n === filled) return slot === 0;
 
-    const prev = ((slot - GRID) % this.loopSteps + this.loopSteps) % this.loopSteps;
+    const prev = ((slot - GRID) % loop + loop) % loop;
     return !set.has(prev * LANE_STRIDE + lane);
   }
 
+  /** Notes currently inside the loop — what she can actually hear. */
   count(roundId) {
-    return this.events[roundId]?.size ?? 0;
+    return this.notes(roundId).length;
   }
 
   clear(roundId) {
@@ -279,6 +350,7 @@ export class Track {
   toJSON() {
     return {
       bars: this.bars,
+      roundBars: { ...this.roundBars },
       bpm: this.bpm,
       events: Object.fromEntries(
         Object.entries(this.events).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])
@@ -289,8 +361,9 @@ export class Track {
   }
 
   static fromJSON(data) {
-    const t = new Track({ bars: data?.bars ?? 2 });
+    const t = new Track({ bars: data?.bars ?? 4 });
     t.bpm = data?.bpm ?? 100;
+    Object.assign(t.roundBars, data?.roundBars ?? {});
     for (const [id, list] of Object.entries(data?.events ?? {})) {
       if (t.events[id]) for (const v of list) t.events[id].add(v);
     }
@@ -298,4 +371,13 @@ export class Track {
     Object.assign(t.shaping, data?.shaping ?? {});
     return t;
   }
+}
+
+/** Greatest common divisor, and from it the lowest common multiple — the number
+ *  of bars after which two loops of different lengths line up again. */
+function gcd(a, b) {
+  return b === 0 ? a : gcd(b, a % b);
+}
+function lcm(a, b) {
+  return (a * b) / gcd(a, b);
 }

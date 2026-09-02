@@ -116,8 +116,6 @@ clock.onSchedule((from, to, timeOf) => {
   session.tick(clock.now() ?? 0);
   if (!voices.ready) return;
 
-  const loop = track.loopSteps;
-
   for (let step = from; step < to; step++) {
     // The click, on every beat, while it is still earning its place.
     if (step % 4 === 0 && step >= clickedTo && session.clickAudible) {
@@ -125,7 +123,6 @@ clock.onSchedule((from, to, timeOf) => {
       clickedTo = step + 1;
     }
 
-    const slot = ((step % loop) + loop) % loop;
     for (const round of ROUNDS) {
       // Only rounds she has KEPT play back. The one in her hands is heard live.
       if (!track.accepted.has(round.id) && round.id !== session.round.id) continue;
@@ -133,6 +130,12 @@ clock.onSchedule((from, to, timeOf) => {
       // out through onHit and never come near this — so she can mute a layer
       // and still play it, which is how you find out what it was doing.
       if (track.isMuted(round.id)) continue;
+
+      // Each round wraps at its OWN length, which is the whole of polymeter:
+      // a three-bar bass under a four-bar drum part drifts and comes back
+      // together every twelve bars (dec:layers-of-different-lengths).
+      const loop = track.loopStepsFor(round.id);
+      const slot = ((step % loop) + loop) % loop;
 
       for (const lane of track.lanesAt(round.id, slot)) {
         // A held block sounds once, where it begins, and rings for its length.
@@ -183,6 +186,20 @@ function refresh() {
   el('transport').dataset.state = session.state;
   el('round').textContent = session.round?.full ?? '';
   el('bpm').textContent = session.tempoIsSet ? `${track.bpm} bpm` : '';
+
+  // How long this round loops for, and — once they differ — when everything
+  // lines up again. That second number is what turns drifting layers from a
+  // fault into a pattern she can hear coming.
+  const lenBtn = el('length');
+  const round = session.round;
+  lenBtn.hidden = !round || session.recording || session.state === 'counting';
+  if (!lenBtn.hidden) {
+    const bars = track.barsFor(round.id);
+    const composite = track.compositeBars;
+    lenBtn.textContent = composite === bars
+      ? `${bars} bars`
+      : `${bars} bars · meets every ${composite}`;
+  }
 
   const undo = resetAction();
   el('reset').hidden = undo === null;
@@ -253,6 +270,30 @@ el('reset').addEventListener('click', (e) => {
     session.reset();
   }
   holding.clear();
+  refresh();
+});
+
+/**
+ * Cycle this round's length.
+ *
+ * 2, 3, 4, 6 — small numbers on purpose. Two layers line up again after the
+ * lowest common multiple of their lengths, so three against four meet every
+ * twelve bars, which a listener hears as a pattern coming round. Seven against
+ * eight would take fifty-six, which a listener hears as the game being broken.
+ */
+const LENGTHS = [2, 3, 4, 6];
+
+el('length').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const round = session.round;
+  if (!round) return;
+  const next = LENGTHS[(LENGTHS.indexOf(track.barsFor(round.id)) + 1) % LENGTHS.length];
+  track.setBars(round.id, next);
+
+  const composite = track.compositeBars;
+  flash(composite === next
+    ? `${round.label.toLowerCase()}: ${next} bars`
+    : `${round.label.toLowerCase()}: ${next} bars — everything meets every ${composite}`);
   refresh();
 });
 

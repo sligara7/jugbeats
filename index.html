@@ -29,7 +29,13 @@
 <!-- Top left: what she is playing right now, and at what speed. -->
 <div class="status">
   <div id="round" class="round"></div>
-  <div id="bpm" class="bpm"></div>
+  <div class="under">
+    <span id="bpm" class="bpm"></span>
+    <!-- How long THIS round loops for. Tapping cycles it. Lives up here rather
+         than beside the keys because it is set once and then left alone, and
+         the play area stays for playing. -->
+    <button id="length" class="length" hidden></button>
+  </div>
 </div>
 
 <!-- Top right: the rounds she has done, and sending it on. -->

@@ -255,7 +255,9 @@ export class Stage {
   }
 
   _drawRuns(g, lanes, hitY, nowStep, roundId, alpha) {
-    const loop = this.track.loopSteps;
+    // This round's own loop, not the track's — rounds may be different lengths
+    // and each repeats on its own cycle.
+    const loop = this.track.loopStepsFor(roundId);
     const horizon = nowStep + FALL_SECONDS / this.clock.stepSeconds;
     const minH = Math.max(18, hitY * 0.055);
 

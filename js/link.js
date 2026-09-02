@@ -11,7 +11,7 @@
 import { Track, ROUNDS, LANE_STRIDE, STEPS_PER_BAR } from './track.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
-const VERSION = 3;
+const VERSION = 4;
 
 const CONTROLS = ['deeper', 'punchier', 'dirtier', 'longer'];
 const SHAPED = ['bass', 'lead'];
@@ -35,29 +35,28 @@ function fromB64Url(str) {
 }
 
 // ---------------------------------------------------------------------------
-// v3 — four rounds, up to four lanes each, plus her tempo
+// v4 — every round carries its own loop length
 //
-// A fixed-size bitfield per round, because it is constant-size: the URL for a
-// track she has filled completely is exactly as long as one with two notes in
-// it, so a link can never grow past what a chat app will carry.
-//
-// New in v3 over v2: the pitched rounds have FOUR lanes rather than two, two
-// under each thumb, so she can play a real bass line and press two notes
-// together as a chord. Every round packs at the same stride whatever it
-// actually uses, which keeps one code path and one format.
+// New in v4 over v3: each round stores how many bars it loops over, so a
+// three-bar bass can sit under a four-bar drum part and drift apart and back
+// together every twelve bars. Every round's bitfield is sized by the LONGEST
+// round, which wastes a little space on the short ones and buys one code path.
 // ---------------------------------------------------------------------------
 
-function encodeV3(track) {
-  const bytesPerRound = Math.ceil((track.loopSteps * LANE_STRIDE) / 8);
+function encodeV4(track) {
+  const maxSteps = track.maxLoopSteps;
+  const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
   const out = new Uint8Array(
-    4 + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
+    4 + ROUNDS.length + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
   );
 
   let p = 0;
   out[p++] = VERSION;
-  out[p++] = track.bars;
+  out[p++] = maxSteps / STEPS_PER_BAR; // the longest round, for sizing on the way back in
   out[p++] = Math.max(0, Math.min(255, track.bpm));
-  out[p++] = 0; // reserved, so a later field costs no version bump
+  out[p++] = 0; // reserved
+
+  for (const round of ROUNDS) out[p++] = track.barsFor(round.id);
 
   for (const round of ROUNDS) {
     for (const { slot, lane } of track.notes(round.id)) {
@@ -74,26 +73,80 @@ function encodeV3(track) {
   for (const inst of SHAPED) {
     for (const c of CONTROLS) {
       const v = track.shaping[inst]?.[c];
-      // Unset sits at the neutral middle, not at zero — zero is a real value
-      // here and would arrive as "turned all the way down".
       out[p++] = Math.round((v === undefined ? 0.5 : Math.min(1, Math.max(0, v))) * 255);
     }
   }
   return out;
 }
 
+function decodeV4(bytes) {
+  let p = 1;
+  const maxBars = bytes[p++] || 4;
+  const bpm = bytes[p++] || 100;
+  p++; // reserved
+
+  const track = new Track({ bars: maxBars });
+  track.bpm = bpm;
+  for (const round of ROUNDS) track.setBars(round.id, bytes[p++] || maxBars);
+
+  const maxSteps = maxBars * STEPS_PER_BAR;
+  const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
+
+  for (const round of ROUNDS) {
+    for (let bit = 0; bit < maxSteps * LANE_STRIDE; bit++) {
+      if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
+    }
+    p += bytesPerRound;
+  }
+
+  const acceptedBits = bytes[p++] ?? 0;
+  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+
+  for (const inst of SHAPED) {
+    track.shaping[inst] = {};
+    for (const c of CONTROLS) {
+      const b = bytes[p++];
+      if (b !== undefined) track.shaping[inst][c] = b / 255;
+    }
+  }
+  return track;
+}
+
+// ---------------------------------------------------------------------------
+// v3 — four rounds, up to four lanes each, one loop length for all of them
+//
+// KEPT FOREVER. Decoding is a widening: every round simply gets the one length
+// the whole track used to share.
+//
+// A fixed-size bitfield per round, because it is constant-size: the URL for a
+// track she has filled completely is exactly as long as one with two notes in
+// it, so a link can never grow past what a chat app will carry.
+//
+// New in v3 over v2: the pitched rounds have FOUR lanes rather than two, two
+// under each thumb, so she can play a real bass line and press two notes
+// together as a chord. Every round packs at the same stride whatever it
+// actually uses, which keeps one code path and one format.
+// ---------------------------------------------------------------------------
+
+// NOTE: there is no encodeV3. Only DECODERS are kept forever — a version is a
+// promise to read what was written, not to keep writing it. The v3 encoder was
+// removed the moment v4 replaced it; a frozen v3 string in the test corpus is
+// what proves this decoder still works, and a live encoder would only have been
+// a second thing to keep correct.
+
 function decodeV3(bytes) {
   let p = 1;
-  const bars = bytes[p++] || 2;
+  const bars = bytes[p++] || 4;
   const bpm = bytes[p++] || 100;
   p++; // reserved
 
   const track = new Track({ bars });
   track.bpm = bpm;
-  const bytesPerRound = Math.ceil((track.loopSteps * LANE_STRIDE) / 8);
+  const steps = bars * STEPS_PER_BAR;
+  const bytesPerRound = Math.ceil((steps * LANE_STRIDE) / 8);
 
   for (const round of ROUNDS) {
-    for (let bit = 0; bit < track.loopSteps * LANE_STRIDE; bit++) {
+    for (let bit = 0; bit < steps * LANE_STRIDE; bit++) {
       if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
     }
     p += bytesPerRound;
@@ -132,10 +185,10 @@ function decodeV2(bytes) {
 
   const track = new Track({ bars });
   track.bpm = bpm;
-  const bytesPerRound = Math.ceil((track.loopSteps * V2_LANES) / 8);
+  const bytesPerRound = Math.ceil((bars * STEPS_PER_BAR * V2_LANES) / 8);
 
   for (const round of ROUNDS) {
-    for (let bit = 0; bit < track.loopSteps * V2_LANES; bit++) {
+    for (let bit = 0; bit < bars * STEPS_PER_BAR * V2_LANES; bit++) {
       if (!(bytes[p + (bit >> 3)] & (1 << (bit & 7)))) continue;
       const slot = Math.floor(bit / V2_LANES);
       const lane = bit % V2_LANES;
@@ -224,14 +277,14 @@ function decodeV1(bytes) {
 }
 
 /** Every decoder we have ever shipped, keyed by version. Nothing leaves. */
-const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3 };
+const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4 };
 
 // ---------------------------------------------------------------------------
 // The boundary
 // ---------------------------------------------------------------------------
 
 export function encode(track) {
-  return toB64Url(encodeV3(track));
+  return toB64Url(encodeV4(track));
 }
 
 /**
@@ -286,4 +339,4 @@ export async function share(track, { title = 'Listen to my beat' } = {}) {
   }
 }
 
-export const _internal = { encodeV3, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
+export const _internal = { encodeV4, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };

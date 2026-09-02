@@ -65,7 +65,24 @@ html, body {
   pointer-events: none;
 }
 .round { font-size: 15px; font-weight: 600; }
-.bpm { font-size: 12px; opacity: 0.45; margin-top: 2px; }
+.under { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.bpm { font-size: 12px; opacity: 0.45; }
+
+/* The only tappable thing in the status corner, so it has to look tappable
+   without shouting — it is set once per round and then left alone. */
+.length {
+  appearance: none;
+  pointer-events: auto;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 238, 252, 0.8);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.length:active { background: var(--hot); border-color: var(--hot); color: #14060d; }
 
 /* --- the transport, down the empty middle -------------------------------- */
 

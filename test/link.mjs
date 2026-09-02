@@ -119,6 +119,16 @@ console.log('\nevery version we have ever shipped still decodes');
       bpm: 96,
       encoded: 'AgJgAAEAAgEBAAIBASEBAQEhAQERASAAEQAgAAAAAQAAAQAAD4CAgICAgICA',
     },
+    {
+      version: 3,
+      note: 'four-bar track at 108bpm, from before rounds had their own lengths',
+      bars: 4,
+      bpm: 108,
+      encoded:
+        'AwRsAAEAAAACAAEAAQAAAAIAAQABAAAAAgABAAEAAAACAAEAAQABAgEAAQABAAECAQABAAEA' +
+        'AQIBAAEAAQABAgEAAQABAQEAAAAAAAgAAAAAAAAAAQAAAAAAAAAIAAAAAAAAAAAAAAACAAAA' +
+        'AAAAAAgAAAAAAAAAAgAAAAAAAAAAAAAAD4CAgICAgICA',
+    },
   ];
 
   for (const c of CORPUS) {
@@ -141,6 +151,11 @@ console.log('\nevery version we have ever shipped still decodes');
 
     check('  it plays at a sensible tempo', t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
     if (c.bpm) check('  at exactly the tempo it was made at', t.bpm === c.bpm);
+
+    // Every version before v4 had one loop length for the whole track, so all
+    // its rounds must come back agreeing — a widening, not a guess.
+    check('  all its rounds get the one length it had',
+      ROUNDS.every((r) => t.barsFor(r.id) === c.bars));
   }
 
   // v1 lost notes under v2, because the pitched rounds only had two lanes then
@@ -170,6 +185,38 @@ console.log('\nchords survive the round trip');
     back.lanesAt('r3', 0).length === 2, `${back.lanesAt('r3', 0).length} notes`);
   check('and they are the same two notes',
     back.lanesAt('r4', 8).join(',') === '0,2' && back.lanesAt('r3', 0).join(',') === '0,3');
+}
+
+console.log('\ndifferent loop lengths survive the round trip');
+
+{
+  // If the lengths did not travel, a shared track would realign differently
+  // from the one she made — same notes, wrong music.
+  const t = new Track();
+  t.setBars('r3', 3);
+  t.setBars('r2', 2);
+  t.record('r1', 0, 0);
+  t.record('r3', 0, 32);   // inside a three-bar loop
+  t.accept('r1'); t.accept('r3');
+
+  const back = decode(encode(t));
+  check('each round keeps its own length',
+    back.barsFor('r1') === 4 && back.barsFor('r2') === 2 && back.barsFor('r3') === 3,
+    `${ROUNDS.map((r) => back.barsFor(r.id)).join(',')}`);
+  check('so it meets on the same cycle she heard',
+    back.compositeBars === t.compositeBars, `${back.compositeBars} bars`);
+  check('and a note inside a short round survives',
+    back.lanesAt('r3', 32).length === 1);
+
+  // Sizing is by the LONGEST round, so a note near the end of the long one must
+  // not be truncated by a shorter neighbour.
+  const t2 = new Track();
+  t2.setBars('r1', 6);
+  t2.setBars('r3', 2);
+  t2.record('r1', 1, 88); // late in a six-bar loop
+  const b2 = decode(encode(t2));
+  check('a note late in the longest round is not cut off',
+    b2.lanesAt('r1', 88).length === 1, `bars ${b2.barsFor('r1')}`);
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);

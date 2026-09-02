@@ -30,6 +30,11 @@ melody — each round playing over everything you kept before it.
 back. That is how a loop stops being a loop and starts being an arrangement:
 real music breathes by taking things away. Muting silences; *clear* deletes.
 
+**Each round can be a different length.** Put the 808 on three bars while the
+drums stay on four and they drift apart and come back together every twelve —
+which is Kashmir, a riff in 3/4 over drums in 4/4, with no time signature
+anywhere in the code. The status corner tells you when everything meets again.
+
 The drum rounds give you one sound per thumb. The 808 and melody give you
 **two notes per thumb**, and pressing two together makes a chord. That is not a
 return to four keys: four drums were four instruments to choose between, four
