@@ -161,41 +161,47 @@ console.log('\nnothing she records can be too fast to play');
   check('every note sits on the eighth grid', slots.every((s) => s % 2 === 0));
 }
 
-console.log('\nconsecutive notes become one held block');
+console.log('\nnotes you can hold become one block; drums never do');
 
 {
-  // The owner's second finding, from the screenshot: four notes in a row read as
-  // four things to hit. In the game she plays they would be one long block she
-  // presses once and holds.
+  // The owner's finding from the screenshot: runs of notes read as several
+  // things to hit. On a layer with sustain they are one block, pressed once and
+  // held. On drums they are not — you do not hold a drum.
   const t = new Track({ bars: 4 });
-  for (const s of [0, 2, 4, 6]) t.record('drums', 0, s);   // a held note
-  t.record('drums', 0, 12);                                 // and a separate tap
-  t.record('drums', 1, 4);                                  // another lane
+  for (const s of [0, 2, 4, 6]) t.record('bass', 0, s);   // a held 808 note
+  t.record('bass', 0, 12);                                 // and a separate one
+  t.record('bass', 1, 4);                                  // another lane
 
-  const runs = t.runs('drums');
+  const runs = t.runs('bass');
   const lane0 = runs.filter((r) => r.lane === 0).sort((a, b) => a.start - b.start);
 
-  check('four notes in a row are one block, not four', lane0.length === 2,
-    `${lane0.length} block(s)`);
+  check('four in a row are one block, not four', lane0.length === 2, `${lane0.length} block(s)`);
   check('the held block spans all four', lane0[0]?.start === 0 && lane0[0]?.length === 8,
     `start ${lane0[0]?.start}, length ${lane0[0]?.length}`);
-  check('a lone tap stays one step long', lane0[1]?.length === 2);
+  check('a lone press stays one step long', lane0[1]?.length === 2);
   check('a different lane is its own block', runs.some((r) => r.lane === 1 && r.length === 2));
 
-  // The sounding rule: once, at the head.
   check('a held block sounds only where it begins',
-    t.isRunStart('drums', 0, 0) &&
-    !t.isRunStart('drums', 0, 2) &&
-    !t.isRunStart('drums', 0, 6) &&
-    t.isRunStart('drums', 0, 12));
+    t.isRunStart('bass', 0, 0) &&
+    !t.isRunStart('bass', 0, 2) &&
+    !t.isRunStart('bass', 0, 6) &&
+    t.isRunStart('bass', 0, 12));
 
-  // A lane filled the whole way round has no gap to start after. Without a
-  // special case it would be occupied everywhere and sound nowhere.
+  // Drums: a kick is a struck object with a length of its own.
+  const d = new Track({ bars: 4 });
+  for (const s of [0, 2, 4, 6]) d.record('drums', 0, s);
+  const kicks = d.runs('drums').filter((r) => r.lane === 0);
+  check('four kicks in a row stay four kicks', kicks.length === 4, `${kicks.length} block(s)`);
+  check('no drum block is ever longer than one step', kicks.every((r) => r.length === 2));
+  check('every kick sounds', [0, 2, 4, 6].every((s) => d.isRunStart('drums', 0, s)));
+
+  // A sustaining lane filled the whole way round has no gap to start after.
+  // Without a special case it would be occupied everywhere and sound nowhere.
   const full = new Track({ bars: 4 });
-  for (let s = 0; s < full.loopSteps; s += 2) full.record('drums', 2, s);
+  for (let s = 0; s < full.loopSteps; s += 2) full.record('bass', 2, s);
   const starts = [];
-  for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('drums', 2, s)) starts.push(s);
-  check('a lane filled all the way round still sounds, once', starts.length === 1 && starts[0] === 0,
+  for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('bass', 2, s)) starts.push(s);
+  check('a lane held all the way round still sounds, once', starts.length === 1 && starts[0] === 0,
     `${starts.length} start(s)`);
 }
 

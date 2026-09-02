@@ -31,12 +31,20 @@ export const GRID = 2;
  * play. Drums map to baked voices; bass and lead map to scale degrees.
  *
  * Four lanes each, because there are four keys (dec:four-keys-two-thumbs).
+ *
+ * `sustains` is whether holding a key means anything on that layer. It does not
+ * for drums, and the owner put it plainly: you do not hold a drum. A kick is a
+ * struck object — it has one length, its own — so consecutive kicks stay
+ * separate hits and holding the key does nothing at all. An 808 and a melody
+ * note DO have a length you choose, which is exactly what holding is for.
  */
 export const LAYERS = [
-  { id: 'drums', label: 'Drums', lanes: ['kick', 'snare', 'hat', 'cowbell'] },
-  { id: 'bass',  label: '808',   lanes: [0, 2, 3, 4] },   // root, ♭3, 4, 5
-  { id: 'lead',  label: 'Melody', lanes: [0, 4, 5, 7] },  // root, 5, ♭6, octave
+  { id: 'drums', label: 'Drums', lanes: ['kick', 'snare', 'hat', 'cowbell'], sustains: false },
+  { id: 'bass',  label: '808',   lanes: [0, 2, 3, 4],  sustains: true },  // root, ♭3, 4, 5
+  { id: 'lead',  label: 'Melody', lanes: [0, 4, 5, 7], sustains: true },  // root, 5, ♭6, octave
 ];
+
+const layerById = (id) => LAYERS.find((l) => l.id === id);
 
 export class Track {
   /** @param {{bars?: number}} opts */
@@ -116,6 +124,14 @@ export class Track {
     const out = [];
     if (!set) return out;
 
+    // On a layer that does not sustain, every note is its own block. Merging
+    // two kicks into one long one would draw a sustain that cannot be played
+    // and cannot be heard.
+    if (!layerById(layerId)?.sustains) {
+      for (const { slot, lane } of this.notes(layerId)) out.push({ lane, start: slot, length: GRID });
+      return out;
+    }
+
     for (let lane = 0; lane < 4; lane++) {
       let start = null;
       let last = null;
@@ -144,6 +160,10 @@ export class Track {
   isRunStart(layerId, lane, slot) {
     const set = this.events[layerId];
     if (!set || !set.has(slot * 4 + lane)) return false;
+
+    // Every hit on a non-sustaining layer sounds. Two kicks in a row are two
+    // kicks, and always were.
+    if (!layerById(layerId)?.sustains) return true;
 
     // A lane filled the whole way round has no gap to start after, so give it
     // one — otherwise it would be occupied everywhere and sound nowhere.

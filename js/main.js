@@ -103,6 +103,10 @@ function onRelease(lane) {
  */
 function extendHeld() {
   if (!holding.size || !voices.ready) return;
+  // Nothing to extend on a layer where holding means nothing. Holding a kick
+  // would otherwise write a kick on every step she held it through, which is a
+  // machine gun rather than a long note.
+  if (!coach.layer.sustains) return;
   const at = clock.now();
   if (at === null) return;
   const reached = Math.floor(at / GRID) * GRID;
