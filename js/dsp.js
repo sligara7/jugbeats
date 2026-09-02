@@ -185,26 +185,58 @@ export function renderSnare(sr, s) {
 }
 
 /**
- * Hats. Filtered noise, and almost entirely about the envelope: a closed hat is
- * 30ms and an open one is 200ms of the identical sound. Phonk hats also get
- * rolled off at the very top so they sit behind the cowbell instead of fighting
- * it on a phone speaker.
+ * The six inharmonic square waves the TR-808 uses for its hats.
+ *
+ * This is the whole reason a real hi-hat sounds like metal and filtered noise
+ * sounds like a click: metal rings at frequencies that are not multiples of each
+ * other, and the ear hears that clash as "struck object" rather than "hiss". The
+ * frequencies themselves are low — what survives the high-pass below is the
+ * dense, clashing cluster of their upper harmonics.
+ */
+const HAT_PARTIALS = [205.3, 304.4, 369.6, 522.7, 540.0, 800.0];
+
+/**
+ * Hats. Six squares through a high-pass, plus a little noise for air.
+ *
+ * The first version of this was band-passed white noise with a 50ms envelope,
+ * and the owner's verdict on hearing it was that it sounded like a click rather
+ * than a hat. That was correct and it was a synthesis problem, not an envelope
+ * one: noise has no pitch structure at all, so shortening or lengthening it just
+ * gives you a shorter or longer hiss. The partials are what was missing.
  */
 export function renderHat(sr, s, { open = false } = {}) {
   const c = shape(s);
-  const dur = open ? lin(c.longer, 0.14, 0.34) : lin(c.longer, 0.028, 0.075);
-  const drive = exp(c.dirtier, 1.1, 3.2);
+  // Longer than before even at the short end. A closed hat still has a body;
+  // below about 45ms the ear stops hearing the metal and hears the transient.
+  const dur = open ? lin(c.longer, 0.16, 0.4) : lin(c.longer, 0.05, 0.115);
+  const drive = exp(c.dirtier, 1.2, 3.6);
+  const cutoff = lin(c.deeper, 8200, 5000);
   const out = alloc(sr, dur);
   const rnd = noiseSource(open ? 0xcafe : 0xf00d);
   const hi = svf();
+  const band = svf();
+  const phases = new Float64Array(HAT_PARTIALS.length);
 
   for (let i = 0; i < out.length; i++) {
     const t = i / sr;
-    const env = decayAt(t, dur, open ? 3.5 : 7);
-    const n = svfStep(hi, rnd(), lin(c.deeper, 9000, 5200), 0.8, sr).hp;
-    out[i] = saturate(n * env, drive);
+
+    let metal = 0;
+    for (let k = 0; k < HAT_PARTIALS.length; k++) {
+      phases[k] += (2 * Math.PI * HAT_PARTIALS[k]) / sr;
+      metal += Math.sin(phases[k]) >= 0 ? 1 : -1;
+    }
+    metal /= HAT_PARTIALS.length;
+
+    // Two envelopes again, as with the cowbell: a hard tick on the front and a
+    // slower shimmer behind it. One envelope is what made this a click.
+    const env = decayAt(t, 0.006, 10) * 0.45 + decayAt(t, dur, open ? 3 : 6) * 0.85;
+
+    // A touch of noise so it breathes; the metal alone is too clean and rings.
+    const air = svfStep(band, rnd(), 11000, 0.7, sr).hp * 0.28;
+
+    out[i] = saturate((svfStep(hi, metal, cutoff, 0.9, sr).hp + air) * env, drive);
   }
-  return normalize(fadeOut(hpf(out, 4000, sr), sr), 0.55);
+  return normalize(fadeOut(hpf(out, 3800, sr), sr), 0.58);
 }
 
 /**

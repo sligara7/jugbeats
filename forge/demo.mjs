@@ -13,7 +13,7 @@ import { encodeWav } from './wav.mjs';
 
 const SR = 44100;
 const BPM = 138;            // phonk sits around 130-150
-const SWING = 0.16;         // how far the off-16ths lean late; 0 is a drum machine
+const SWING = 0.32;         // how far the "and" leans late; 0 is a drum machine
 const BARS = 4;
 const STEPS = 16;           // sixteenths per bar
 
@@ -29,9 +29,10 @@ function place(buf, atSec, gain = 1) {
   }
 }
 
-/** When step `s` of bar `b` lands, with swing applied to the off-beats. */
+/** When step `s` of bar `b` lands. Swing sits on the "and" of each beat, the
+ *  same rule the running clock uses — keep these two in step. */
 function timeOf(bar, s) {
-  const swung = s % 2 === 1 ? SWING * stepSec : 0;
+  const swung = s % 4 === 2 ? SWING * stepSec : 0;
   return (bar * STEPS + s) * stepSec + swung;
 }
 

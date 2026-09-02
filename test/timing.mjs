@@ -97,15 +97,29 @@ console.log('\nswing lands where it should');
 
 {
   const ctx = new FakeContext();
-  const clock = new Clock(ctx, { bpm: 138, swing: 0.16 });
+  const clock = new Clock(ctx, { bpm: 138 }); // whatever the shipping default is
   clock.start();
   const stepSec = clock.stepSeconds;
 
-  const even = clock.timeOf(4) - clock.timeOf(0);
-  const odd = clock.timeOf(5) - clock.timeOf(4);
-  check('on-beats stay exactly on the grid', Math.abs(even - 4 * stepSec) < 1e-12);
-  check('off-beats lean late by the swing amount',
-    Math.abs(odd - stepSec * 1.16) < 1e-12, `${(odd / stepSec).toFixed(3)} steps`);
+  const beat = clock.timeOf(4) - clock.timeOf(0);
+  const toTheAnd = clock.timeOf(2) - clock.timeOf(0);
+  check('the beats themselves stay exactly on the grid',
+    Math.abs(beat - 4 * stepSec) < 1e-12);
+  // Asserted against the clock's own swing rather than a copy of the number,
+  // so retuning the feel can never silently break this.
+  check('the "and" of the beat leans late',
+    Math.abs(toTheAnd - stepSec * (2 + clock.swing)) < 1e-12 && clock.swing > 0.2,
+    `${(toTheAnd / stepSec).toFixed(3)} steps, swing ${clock.swing}`);
+
+  // The bug this guards: swing used to sit on the odd sixteenths. The moment
+  // notes were quantised to eighths every note landed on an unswung step, and
+  // the groove vanished with nothing failing.
+  const playable = [0, 2, 4, 6, 8, 10, 12, 14];
+  const swungCount = playable.filter(
+    (s) => Math.abs(clock.timeOf(s) - (clock.timeOf(0) + s * stepSec)) > 1e-9
+  ).length;
+  check('swing is audible on the grid she can actually play',
+    swungCount === 4, `${swungCount} of 8 eighths swung`);
 
   // Fractional positions must interpolate rather than snapping, or the highway
   // stutters between steps.
@@ -126,6 +140,26 @@ console.log('\nnot-running is not the same as at-the-beginning');
 }
 
 // ---------------------------------------------------------------------------
+
+console.log('\nnothing she records can be too fast to play');
+
+{
+  // The bug the owner found by playing it: at 138bpm two adjacent sixteenths are
+  // 108ms apart, and blocks arriving that close are impossible for a child to
+  // hit. Quantising to eighths makes the tightest possible spacing ~217ms.
+  const t = new Track({ bars: 4 });
+  const stepMs = (60 / 138 / 4) * 1000;
+
+  for (let i = 0; i < 200; i++) t.record('drums', 0, i * 0.37); // ragged taps
+  const slots = t.notes('drums').map((n) => n.slot).sort((a, b) => a - b);
+  const closest = slots.slice(1).reduce((m, s, i) => Math.min(m, s - slots[i]), Infinity);
+
+  check('no two notes in a lane land closer than an eighth', closest >= 2,
+    `closest ${closest} steps = ${(closest * stepMs).toFixed(0)}ms`);
+  check('the tightest gap is playable by a child', closest * stepMs > 180,
+    `${(closest * stepMs).toFixed(0)}ms apart`);
+  check('every note sits on the eighth grid', slots.every((s) => s % 2 === 0));
+}
 
 console.log('\nquantising is symmetric');
 

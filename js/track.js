@@ -12,6 +12,21 @@
 export const STEPS_PER_BAR = 16;
 
 /**
+ * The grid she can actually place notes on, in sixteenths. 2 = eighth notes.
+ *
+ * THIS IS A PLAYABILITY DECISION, NOT A MUSICAL ONE (dec:play-on-eighths). The
+ * first build quantised to sixteenths, and at 138bpm two adjacent sixteenths are
+ * 108 milliseconds apart — the owner's verdict on playing it was that blocks
+ * arriving straight after each other were impossible to play, which was exactly
+ * right. Eighths put the tightest possible spacing at ~217ms, which a
+ * nine-year-old's thumb can actually hit.
+ *
+ * The loop still RUNS on sixteenths, because swing needs somewhere to sit
+ * between the eighths. She just cannot land on the in-between ones.
+ */
+export const GRID = 2;
+
+/**
  * The layers, in the order the keys hand over. Each names what its four lanes
  * play. Drums map to baked voices; bass and lead map to scale degrees.
  *
@@ -42,14 +57,17 @@ export class Track {
    * Record a tap.
    *
    * `atStep` is the continuous position the clock reported when she touched;
-   * it is rounded to the nearest sixteenth, which is what makes a nine-year-old
-   * sound like she can play. Rounding is deliberately generous and symmetric:
-   * quantising late-only would teach her to rush.
+   * it is rounded to the nearest EIGHTH, which is what makes a nine-year-old
+   * sound like she can play and — just as important — guarantees that nothing
+   * she records can come back closer together than her thumb can manage.
+   * Rounding is deliberately generous and symmetric: quantising late-only would
+   * teach her to rush.
    *
    * Returns the loop step it landed on, so the stage can flash the right slot.
    */
   record(layerId, lane, atStep) {
-    const slot = ((Math.round(atStep) % this.loopSteps) + this.loopSteps) % this.loopSteps;
+    const quantised = Math.round(atStep / GRID) * GRID;
+    const slot = ((quantised % this.loopSteps) + this.loopSteps) % this.loopSteps;
     this.events[layerId]?.add(slot * 4 + lane);
     return slot;
   }

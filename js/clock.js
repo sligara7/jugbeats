@@ -31,10 +31,16 @@ export class Clock {
   /**
    * @param {AudioContext} ctx
    * @param {{bpm?: number, swing?: number}} opts
-   *   swing — how far the off-sixteenths lean late, as a fraction of a step.
-   *   0 is a drum machine. Around 0.16 is where phonk lives.
+   *   swing — how far the "and" of each beat leans late, as a fraction of a
+   *   sixteenth. 0 is a drum machine; around a third is where phonk lives.
+   *
+   * SWING IS AT THE EIGHTH, NOT THE SIXTEENTH. It used to delay every odd
+   * sixteenth, which was correct for a sixteenth-note groove and became silent
+   * the moment notes were quantised to eighths — every note would have landed on
+   * an unswung step and the groove would have quietly vanished. It delays the
+   * "and" of each beat instead, which is what a human drummer does.
    */
-  constructor(ctx, { bpm = 138, swing = 0.16 } = {}) {
+  constructor(ctx, { bpm = 138, swing = 0.32 } = {}) {
     this.ctx = ctx;
     this.bpm = bpm;
     this.swing = swing;
@@ -66,7 +72,8 @@ export class Clock {
     const whole = Math.floor(step);
     const frac = step - whole;
     const at = (s) => {
-      const swung = ((s % 2) + 2) % 2 === 1 ? this.swing * this.stepSeconds : 0;
+      // The "and" of the beat — steps 2, 6, 10, 14 of each bar — leans late.
+      const swung = ((s % 4) + 4) % 4 === 2 ? this.swing * this.stepSeconds : 0;
       return this._startedAt + s * this.stepSeconds + swung;
     };
     return frac === 0 ? at(whole) : at(whole) + (at(whole + 1) - at(whole)) * frac;
