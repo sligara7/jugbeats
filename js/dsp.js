@@ -454,25 +454,28 @@ export const SCALE_STEPS = [0, 3, 5, 7, 10];
 export const SCALE_NAME = 'minor pentatonic';
 
 /**
- * The chord progression, one chord per bar, in semitones above the root.
+ * The chords the music sits on, one per bar. ONE CHORD: it stays home.
  *
- * i — ♭VI — ♭VII — i. About as phonk as four chords get, and the reason this
- * exists at all is that until now the game had NO HARMONY: everything sat on one
- * chord from start to finish, and no amount of rhythm work makes a static
- * harmony go anywhere (dec:idea-chord-progression).
+ * A four-chord progression moved under everything automatically for one build.
+ * It was played and taken back out. The reason is worth keeping, because it
+ * would recur in any future version: THE 808 TRANSPOSES WITH THE CHORD, so a
+ * bass line she recorded over home came back at a different pitch on the other
+ * bars. What she played was not what she heard. To an adult that reads as
+ * harmony; to a child it reads as the game altering her music behind her back,
+ * and it cuts against the one thing this project is for.
  *
- * IT MOVES ON ITS OWN AND SHE CHOOSES NOTHING. That is the cheapest version of
- * the idea and most of its value: her loop stops being static without her ever
- * having to learn what a chord is, and she hears each change before she has to
- * play over it — which is what stepping through chords by hand could not offer.
- *
- * THE PENTATONIC IS WHY THIS IS SAFE. Minor pentatonic is consonant against
- * every chord a minor key is built from — it is why a blues player uses one
- * scale over a whole tune — so the harmony can move underneath her and every
- * note she can press still fits. The scale lock was chosen to make chords safe
- * and turns out to make CHANGES safe too.
+ * WHAT A LATER VERSION MUST NOT REPEAT: a note she has recorded must never be
+ * transposed under her afterwards. Chords chosen deliberately, fixed at the
+ * moment of recording (dec:idea-manual-chords-with-a-pause).
  */
-export const PROGRESSION = [0, 8, 10, 0];
+export const PROGRESSION = [0];
+
+/**
+ * The chords that WERE in it, kept as a note rather than as code: 0, 8, 10, 0 —
+ * i, flat VI, flat VII, i. They are the palette a manual version would offer,
+ * and the pentatonic is consonant against all of them, which is the finding
+ * that survives the revert and makes the manual version safe.
+ */
 
 /** The scale natural minor used to be, kept only so a test can prove the
  *  pentatonic fixed something real rather than being an equivalent relabel. */

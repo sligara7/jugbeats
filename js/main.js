@@ -52,6 +52,8 @@ if (incoming) session.openEverything();
 const alreadySounded = new Set();
 /** Lanes held right now, mapped to the last absolute step written for each. */
 const holding = new Map();
+/** The live sounding note under each thumb, so it can be let go on release. */
+const held = new Map();
 
 const stage = new Stage(el('stage'), clock, { onHit, onRelease });
 
@@ -81,10 +83,20 @@ function onHit(lane) {
   const { voice, degree } = voiceFor(round, lane);
 
   // 1. Sound. Now, with no time argument, so it goes at the earliest moment the
-  //    audio thread will take it — transposed to whatever chord is sounding, so
-  //    what she plays live is what gets recorded.
+  //    audio thread will take it.
+  //
+  //    On a sustaining round the note is HELD: at the moment she presses,
+  //    nothing knows how long it will be, so it cannot be chosen in advance.
+  //    It rings until she lets go, which is what the long block on screen has
+  //    been promising and not delivering.
   const now = clock.now();
-  voices.play(voice, { degree, chord: chordAt(now ?? 0) });
+  const chord = chordAt(now ?? 0);
+  if (round.sustains) {
+    held.get(lane)?.release();
+    held.set(lane, voices.startHeld(voice, { degree, chord }));
+  } else {
+    voices.play(voice, { degree, chord });
+  }
 
   // 2. Recording, afterwards — and only while she is actually recording.
   if (!session.recording) return;
@@ -104,6 +116,9 @@ function onHit(lane) {
 
 function onRelease(lane) {
   holding.delete(lane);
+  // Let the sounding note go with her thumb.
+  held.get(lane)?.release();
+  held.delete(lane);
 }
 
 /**
@@ -175,10 +190,13 @@ clock.onSchedule((from, to, timeOf) => {
         if (alreadySounded.delete(key)) continue;
         const { voice, degree } = voiceFor(round, lane);
         const gain = round.id === session.round.id ? 1 : 0.8;
-        // The chord comes from ABSOLUTE time, not from where the note sits in
-        // its own loop — so a short round replays the same phrase over a
-        // different chord each time round.
-        voices.play(voice, { degree, time: timeOf(step), gain, chord: chordAt(step) });
+        // Sound it for as long as she held it. A drum ignores this and keeps
+        // its own length; a pitched note takes the nearest rendered one.
+        const steps = track.runLengthAt(round.id, lane, slot);
+        voices.play(voice, {
+          degree, time: timeOf(step), gain, chord: chordAt(step),
+          seconds: steps * clock.stepSeconds,
+        });
       }
     }
   }
@@ -303,6 +321,8 @@ el('reset').addEventListener('click', (e) => {
     // against them is now about a different moment. This is the same class of
     // staleness that silenced the click for half a minute.
     alreadySounded.clear();
+    for (const h of held.values()) h.release();
+    held.clear();
     session.clearTempo();
   } else {
     session.reset();

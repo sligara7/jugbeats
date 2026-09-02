@@ -71,7 +71,7 @@ for (let bar = 0; bar < BARS; bar++) {
   for (const s of OPENHAT) place(kit.openhat, timeOf(bar, s), 0.4);
   for (const s of COWBELL) place(kit.cowbell, timeOf(bar, s), bar % 2 === 0 ? 0.5 : 0.34);
 
-  // The bass moves with the chord; the lead stays in one scale over the top.
+  // One chord throughout, since the automatic progression was taken back out.
   const shift = Math.pow(2, PROGRESSION[bar % PROGRESSION.length] / 12);
   for (const [b, s] of BASS) {
     if (b !== bar % 4) continue;

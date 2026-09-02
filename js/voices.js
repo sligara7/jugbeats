@@ -43,6 +43,34 @@ const VOICE_GAIN = {
 /** Where the lead sits relative to the 808 — two octaves up, out of its way. */
 const LEAD_OCTAVES = 2;
 
+/**
+ * The note lengths pitched voices are rendered at, in seconds.
+ *
+ * A held key already drew a longer block on screen and made exactly the same
+ * sound, because the amplitude envelope is baked into the sample. That left the
+ * decision "a pitched note has a length the player chooses" only half built.
+ *
+ * Rendering a few lengths rather than moving the envelope onto a gain node is
+ * the cheaper of the two answers, and it keeps the character: each length is
+ * rendered with its OWN proper envelope, so a long 808 decays like a long 808
+ * rather than like a short one stretched. The steps are coarse and the ear does
+ * not notice — what it notices is a two-bar note that stops after a beat.
+ *
+ * Seconds rather than beats, deliberately: tempo is set after these are built,
+ * and tying them to it would mean re-rendering every time she retaps.
+ */
+const LENGTHS = [0.25, 0.5, 1.0, 2.0];
+
+/** Which rendered length is closest to what she actually held. */
+function nearestLength(seconds) {
+  if (!(seconds > 0)) return 0;
+  let best = 0;
+  for (let i = 1; i < LENGTHS.length; i++) {
+    if (Math.abs(LENGTHS[i] - seconds) < Math.abs(LENGTHS[best] - seconds)) best = i;
+  }
+  return best;
+}
+
 export class Voices {
   /**
    * @param {AudioContext} ctx
@@ -182,22 +210,26 @@ export class Voices {
     // pentatonic, which wanders outside the key: shifting C minor pentatonic up
     // to the flat sixth introduces a note the key does not contain, and the
     // drone holding the root underneath would be arguing with it.
+    // Every note she can press, at every length she can hold it for. The chord
+    // dimension collapsed to one when the automatic progression came out, so
+    // this costs no more buffers than it did before.
     for (let chord = 0; chord < PROGRESSION.length; chord++) {
       const shift = Math.pow(2, PROGRESSION[chord] / 12);
       for (const degree of DEGREES) {
-        this.pitched.set(
-          `bass:${degree}:${chord}`,
-          toBuffer(this.ctx, render808(sr, degreeToHz(degree) * shift, this.shaping.bass), sr)
-        );
-      }
-    }
-    for (const degree of DEGREES) {
-      const buf = toBuffer(
-        this.ctx, renderLead(sr, degreeToHz(degree, LEAD_OCTAVES), this.shaping.lead), sr
-      );
-      // One buffer, keyed under every chord, so the lookup stays uniform.
-      for (let chord = 0; chord < PROGRESSION.length; chord++) {
-        this.pitched.set(`lead:${degree}:${chord}`, buf);
+        for (let len = 0; len < LENGTHS.length; len++) {
+          const seconds = LENGTHS[len];
+          this.pitched.set(
+            `bass:${degree}:${chord}:${len}`,
+            toBuffer(this.ctx,
+              render808(sr, degreeToHz(degree) * shift, this.shaping.bass, { seconds }), sr)
+          );
+          this.pitched.set(
+            `lead:${degree}:${chord}:${len}`,
+            toBuffer(this.ctx,
+              renderLead(sr, degreeToHz(degree, LEAD_OCTAVES) * shift, this.shaping.lead,
+                { seconds }), sr)
+          );
+        }
       }
     }
   }
@@ -217,17 +249,20 @@ export class Voices {
    * so there is no awaiting and no lazy loading here.
    *
    * @param {string} voice  'kick' | 'snare' | ... | 'bass' | 'lead'
-   * @param {{degree?: number, time?: number, gain?: number, chord?: number}} opts
-   *   chord — which chord of the progression is sounding. Drums ignore it; a
-   *   kick does not transpose.
+   * @param {{degree?, time?, gain?, chord?, seconds?}} opts
+   *   chord   — which chord is sounding. Drums ignore it; a kick does not transpose.
+   *   seconds — how long the note should last. Ignored by drums, which have a
+   *             length of their own; rounded to the nearest rendered length for
+   *             pitched voices, which is how a held note finally sounds held.
    */
-  play(voice, { degree = 0, time, gain = 1, chord = 0 } = {}) {
+  play(voice, { degree = 0, time, gain = 1, chord = 0, seconds } = {}) {
     const at = time ?? this.ctx.currentTime;
     const n = DEGREES.length;
     const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
+    const len = nearestLength(seconds ?? LENGTHS[1]);
     const buf =
       this.drums.get(voice) ??
-      this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}`);
+      this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}:${len}`);
     if (!buf) return;
 
     const src = this.ctx.createBufferSource();
@@ -245,6 +280,43 @@ export class Voices {
     src.start(Math.max(at, this.ctx.currentTime));
   }
 }
+
+/**
+ * Start a note that lasts as long as she holds the key, and hand back the way
+ * to end it.
+ *
+ * The longest rendered length is started, and release ramps it down over a few
+ * tens of milliseconds — long enough not to click, short enough to feel like
+ * letting go. This is the LIVE half of holding: at the moment she presses,
+ * nothing knows how long the note will be, so it cannot be chosen in advance.
+ * The recorded half picks a rendered length once the run is known.
+ */
+Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
+  const n = DEGREES.length;
+  const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
+  const buf = this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}:${LENGTHS.length - 1}`);
+  if (!buf) return { release() {} };
+
+  const src = this.ctx.createBufferSource();
+  const g = this.ctx.createGain();
+  src.buffer = buf;
+  g.gain.value = gain * (VOICE_GAIN[voice] ?? 1);
+  src.connect(g).connect(this.master);
+  src.start();
+
+  let done = false;
+  return {
+    release: () => {
+      if (done) return;
+      done = true;
+      const t = this.ctx.currentTime;
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.linearRampToValueAtTime(0, t + 0.06);
+      try { src.stop(t + 0.08); } catch { /* already stopped */ }
+    },
+  };
+};
 
 /** Wrap a Float32Array of samples as a mono AudioBuffer. */
 function toBuffer(ctx, samples, sampleRate) {

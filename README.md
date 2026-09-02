@@ -44,10 +44,9 @@ already works.
 That is the whole of the teaching: nobody tells you a track is drums plus bass
 plus melody. You hear it get fuller because you filled it.
 
-**The chords move on their own** — i, ♭VI, ♭VII, i, one per bar. The 808 follows
-them; the melody stays in one scale and floats over the top, which is how a band
-does it and why every note still fits. You never have to know a chord is
-happening.
+**Hold a bass or melody key and the note holds with it.** Let go and it stops.
+Drums do not work that way, because a drum is a struck object with a length of
+its own.
 
 The pitched lanes are locked to the **minor pentatonic**, and the drone sounds
 its root. Every pair of notes in that scale is consonant, so there is no wrong

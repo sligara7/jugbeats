@@ -332,6 +332,24 @@ export class Track {
   }
 
   /** Notes currently inside the loop — what she can actually hear. */
+  /**
+   * How long the run STARTING at this slot is, in steps — 0 if none starts here.
+   *
+   * The scheduler needs this to sound a held note for the length she held it.
+   * Walking forward on demand rather than caching: a loop is at most a few dozen
+   * steps and this runs a handful of times per tick, so a cache would be another
+   * thing to invalidate for no measurable gain.
+   */
+  runLengthAt(roundId, lane, slot) {
+    if (!this.isRunStart(roundId, lane, slot)) return 0;
+    if (!roundById(roundId)?.sustains) return GRID;
+    const set = this.events[roundId];
+    const loop = this.loopStepsFor(roundId);
+    let n = 0;
+    for (let s = slot; s < loop && set.has(s * LANE_STRIDE + lane); s += GRID) n += GRID;
+    return n;
+  }
+
   count(roundId) {
     return this.notes(roundId).length;
   }

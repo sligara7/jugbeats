@@ -99,8 +99,11 @@ console.log('\nthe harmony can move and every note still fits');
   // needed no new scale logic at all.
   const { PROGRESSION } = await import('../js/dsp.js');
 
-  check('the progression is four chords', PROGRESSION.length === 4, PROGRESSION.join(', '));
-  check('it starts and ends on home', PROGRESSION[0] === 0 && PROGRESSION[3] === 0);
+  // The automatic progression was tried and taken back out: the 808 transposed
+  // with it, so a bass line she recorded over home came back at a different
+  // pitch elsewhere, and what she played was not what she heard.
+  check('the music stays on one chord', PROGRESSION.length === 1, PROGRESSION.join(', '));
+  check('and that chord is home', PROGRESSION[0] === 0);
 
   // Every chord root must itself be a note of the minor key, or the progression
   // has wandered outside the key the drone is holding.
@@ -140,21 +143,21 @@ console.log('\nthe harmony can move and every note still fits');
     droneClashes.length ? `clashes over ${droneClashes.join(', ')}` : 'pedal point holds');
 }
 
-console.log('\nthe chord follows absolute time, not a loop');
+console.log('\nthe harmony does not move under her');
 
 {
+  // This is the assertion that keeps the revert honest. The automatic
+  // progression transposed the 808 with the chord, so a bass line she recorded
+  // over home came back at a DIFFERENT PITCH on later bars — what she played
+  // was not what she heard. Whatever a manual version does later, a note she
+  // has already recorded must never be moved underneath her.
   const { chordAt } = await import('../js/track.js');
-  check('bar one is home', chordAt(0) === 0);
-  check('bar two has moved', chordAt(16) === 1);
-  check('bar four is home again', chordAt(48) === 3);
-  check('and it cycles', chordAt(64) === 0 && chordAt(80) === 1);
-
-  // The point of keying it to absolute time: a three-bar round replays the same
-  // phrase over a different chord each time round.
-  const firstPass = chordAt(0);
-  const secondPass = chordAt(3 * 16); // same slot, one three-bar loop later
-  check('a three-bar loop meets a different chord next time round',
-    firstPass !== secondPass, `${firstPass} then ${secondPass}`);
+  const bars = [0, 16, 32, 48, 64, 160, 1024];
+  check('every bar is the same chord', bars.every((b) => chordAt(b) === 0),
+    bars.map((b) => chordAt(b)).join(','));
+  check('so a phrase sounds the same on every pass',
+    chordAt(0) === chordAt(3 * 16) && chordAt(0) === chordAt(4 * 16));
+  check('and negative positions do not wander either', chordAt(-16) === 0);
 }
 
 console.log('\npitches come out where they should');

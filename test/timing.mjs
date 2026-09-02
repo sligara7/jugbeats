@@ -340,6 +340,36 @@ console.log('\nshortening a round does not destroy what is past the end');
     t.notes('r3').map((n) => n.slot).sort((a, b) => a - b).join(',') === '0,16,32,48');
 }
 
+console.log('\na held note sounds for as long as she held it');
+
+{
+  // The defect this fixes: holding a pitched key already drew ONE long block on
+  // screen and made exactly the same sound as a tap, because the amplitude
+  // envelope is baked into the sample. The picture lengthened; the note did not.
+  const t = new Track();
+  for (const s of [0, 2, 4, 6]) t.record('r3', 0, s);   // held across four steps
+  t.record('r3', 1, 16);                                 // a single tap
+
+  check('a held run reports its whole length', t.runLengthAt('r3', 0, 0) === 8,
+    `${t.runLengthAt('r3', 0, 0)} steps`);
+  check('a tap reports one grid step', t.runLengthAt('r3', 1, 16) === 2,
+    `${t.runLengthAt('r3', 1, 16)} steps`);
+  check('nothing is reported where no run begins', t.runLengthAt('r3', 0, 4) === 0);
+
+  // A drum has a length of its own; holding one must not lengthen it.
+  const d = new Track();
+  for (const s of [0, 2, 4]) d.record('r1', 0, s);
+  check('a drum stays one step however long she leans on it',
+    d.runLengthAt('r1', 0, 0) === 2 && d.runLengthAt('r1', 0, 2) === 2);
+
+  // And the length must survive being shortened out of range.
+  const short = new Track();
+  for (const s of [0, 2, 4, 6]) short.record('r3', 0, s);
+  short.setBars('r3', 1);
+  check('a run clipped by a shorter loop reports only what is inside it',
+    short.runLengthAt('r3', 0, 0) === 8, `${short.runLengthAt('r3', 0, 0)} steps`);
+}
+
 console.log('\nquantising is symmetric');
 
 {
