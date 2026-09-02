@@ -107,17 +107,20 @@ html, body {
 }
 @keyframes throb { 50% { opacity: 0.55; } }
 
+/* Words, not an icon — and quieter than the transport, because it is the
+   button she reaches for when something has gone wrong rather than the one
+   she uses to play. */
 .reset {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: transparent;
   color: rgba(244, 238, 252, 0.75);
   font: inherit;
-  font-size: 20px;
-  width: 52px;
-  height: 52px;
+  font-size: 14px;
+  padding: 15px 18px;
   border-radius: 999px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .reset:active { background: rgba(255, 255, 255, 0.28); color: var(--ink); }
 

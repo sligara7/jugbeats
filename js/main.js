@@ -155,12 +155,37 @@ function transportLabel() {
   return 'START';
 }
 
+/**
+ * One reset button, labelled with whatever it would actually do right now.
+ *
+ * Deliberately one control rather than several. This screen's virtue is that
+ * almost nothing is on it, and four separate undo buttons on a two-key game is
+ * how it stops being a two-key game. Naming the round it would clear — "clear
+ * hats" — also beats "reset layer", which makes her work out what a layer is
+ * and which one she is on.
+ *
+ * Returns null when there is nothing to undo, and the button hides.
+ */
+function resetAction() {
+  if (track.count(session.round?.id) > 0) {
+    return { label: `clear ${session.round.label.toLowerCase()}`, kind: 'round' };
+  }
+  if (session.canRetapTempo) return { label: 'new tempo', kind: 'tempo' };
+  return null;
+}
+
 function refresh() {
   el('transport').textContent = transportLabel();
   el('transport').dataset.state = session.state;
   el('round').textContent = session.round?.full ?? '';
-  el('bpm').textContent = `${track.bpm} bpm`;
-  el('reset').hidden = track.count(session.round?.id) === 0;
+  el('bpm').textContent = session.tempoIsSet ? `${track.bpm} bpm` : '';
+
+  const undo = resetAction();
+  el('reset').hidden = undo === null;
+  if (undo) {
+    el('reset').textContent = undo.label;
+    el('reset').dataset.kind = undo.kind;
+  }
 
   const strip = el('rounds');
   strip.innerHTML = '';
@@ -196,7 +221,18 @@ el('transport').addEventListener('click', (e) => {
 
 el('reset').addEventListener('click', (e) => {
   e.stopPropagation();
-  session.reset();
+  const undo = resetAction();
+  if (!undo) return;
+
+  if (undo.kind === 'tempo') {
+    // Stop the clock too. It refuses to retune while running, on purpose —
+    // every scheduled time and every block on screen is derived from it — so
+    // going back to tapping means going back to not running.
+    clock.stop();
+    session.clearTempo();
+  } else {
+    session.reset();
+  }
   holding.clear();
   refresh();
 });
@@ -235,6 +271,8 @@ session.onNudge((n) => {
       flash(`now the ${session.round.full.toLowerCase()}`);
       break;
     case 'round-reset': flash('cleared — go again'); break;
+    case 'tempo-cleared': flash('tap the keys four times for a new speed'); break;
+    case 'round-changed': flash(`back on the ${session.round.full.toLowerCase()}`); break;
     case 'nothing-to-keep': flash('play something first'); break;
     case 'all-done': flash('you made a whole track'); break;
     default: break;
@@ -325,6 +363,9 @@ voices.load().then(() => {
   }
   el('gate-label').textContent = incoming ? 'tap to hear it' : 'tap to start';
   el('gate').classList.add('loaded');
+  // Say what the first move is. The transport reads "TAP 0/4", which is only
+  // obvious once you already know what it means.
+  if (!incoming) setTimeout(() => flash('tap the two keys four times to set your speed'), 700);
 }).catch((err) => {
   el('gate-label').textContent = 'could not load the sounds';
   console.error(err);

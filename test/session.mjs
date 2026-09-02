@@ -68,6 +68,44 @@ console.log('\nshe taps her own tempo');
   check('a long pause starts the count again', s6.tapsSoFar === 1, `${s6.tapsSoFar} taps`);
 }
 
+console.log('\nthe tempo is not a dead end');
+
+{
+  // THE TRAP THAT SHIPPED. Once four taps landed there was no route back to
+  // tapping, so a child who set something too fast could only escape by
+  // reloading the page. The first thing she does was the one thing she could
+  // not undo.
+  const track = new Track();
+  const s = new Session(track);
+  tapOut(s, 150);
+  check('a tempo she does not like is set', s.tempoIsSet && track.bpm === 150);
+  check('and she is offered a way out of it', s.canRetapTempo);
+
+  s.clearTempo();
+  check('clearing it puts her back to tapping', !s.tempoIsSet && s.tapsSoFar === 0);
+  check('and nothing else was thrown away', track.isEmpty());
+
+  const second = tapOut(s, 96);
+  check('she can tap a different one', second === 96 && track.bpm === 96);
+}
+
+console.log('\nbut the tempo cannot move once music depends on it');
+
+{
+  // The offer is withdrawn rather than the request refused after she makes it.
+  // Retuning mid-track would move notes already recorded against the old tempo,
+  // which is the same reason the clock refuses to retune while running.
+  const track = new Track();
+  const s = new Session(track);
+  tapOut(s, 110);
+  s.begin(0); s.tick(0);
+  track.record('r1', 0, 0);
+  s.stop();
+
+  check('once a round is kept, retapping is no longer offered', !s.canRetapTempo);
+  check('and the kept round is still there', track.count('r1') === 1);
+}
+
 console.log('\nthe transport does what its buttons say');
 
 {

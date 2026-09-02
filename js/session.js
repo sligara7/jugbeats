@@ -119,6 +119,31 @@ export class Session {
     return this._taps.length >= TAPS_TO_SET;
   }
 
+  /**
+   * Throw away the tempo and go back to tapping one.
+   *
+   * This existed as a dead end: once four taps had landed there was no route
+   * back, so a child who tapped something too fast could only escape by
+   * reloading the page — which she would never think to do. The very first
+   * thing she does was the one thing she could not undo.
+   */
+  clearTempo() {
+    this._taps = [];
+    this._emit({ kind: 'tempo-cleared' });
+  }
+
+  /**
+   * May she retap right now?
+   *
+   * Only before anything has been kept. Changing tempo later would move notes
+   * that have already been recorded against the old one, and the clock refuses
+   * to retune while running for exactly that reason — so the offer is withdrawn
+   * rather than the request being refused after she makes it.
+   */
+  get canRetapTempo() {
+    return this.state === 'tempo' && this.tempoIsSet && this.track.accepted.size === 0;
+  }
+
   // -------------------------------------------------------------------------
   // The transport
   // -------------------------------------------------------------------------
