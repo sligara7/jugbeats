@@ -129,6 +129,58 @@ console.log('\nswing lands where it should');
 
 // ---------------------------------------------------------------------------
 
+console.log('\nstopping and starting again begins cleanly');
+
+{
+  // THE BUG THIS GUARDS. Resetting the tempo stops the clock, and its step
+  // counter goes back to zero. Anything else that remembered a step number was
+  // then talking about a different moment — which silenced the metronome for
+  // about thirty seconds, until absolute time caught up with the previous
+  // attempt. The fix was to delete the thing that remembered, and the reason
+  // that was safe is asserted here.
+  const ctx = new FakeContext();
+  const clock = new Clock(ctx, { bpm: 120, swing: 0 });
+
+  // Subscribe BEFORE starting, the way the shell does. start() runs a tick
+  // synchronously so that the first beat is committed immediately, which means
+  // a listener attached afterwards misses that first window — worth knowing,
+  // and the reason the shell subscribes at load and starts on a button press.
+  let seen = [];
+  clock.onSchedule((from, to) => { for (let s = from; s < to; s++) seen.push(s); });
+
+  const run = () => {
+    for (let i = 0; i < 60; i++) { ctx.advance(0.025); clock._tick(); }
+    const got = seen;
+    seen = [];
+    return got;
+  };
+
+  clock.start();
+  const first = run();
+  clock.stop();
+  clock.start();
+  const second = run();
+
+  check('the first run starts at step zero', first[0] === 0, `${first[0]}`);
+  check('and so does the second, after a stop', second[0] === 0, `${second[0]}`);
+  check('the second run is not skipped or shortened',
+    Math.abs(second.length - first.length) <= 1, `${first.length} then ${second.length}`);
+  check('every step still arrives exactly once, in order',
+    second.every((s, i) => i === 0 || s === second[i - 1] + 1));
+
+  // The property that made the extra guard unnecessary: no listener needs to
+  // remember which steps it has already handled.
+  check('no step is ever delivered twice', new Set(second).size === second.length);
+
+  // And the shape of the bug itself: a high-water mark taken from the first run
+  // would suppress the whole of the second, because the numbers start again.
+  const highWater = Math.max(...first) + 1;
+  const suppressed = second.filter((s) => s < highWater).length;
+  check('a remembered step number from the first run would have silenced the second',
+    suppressed === second.length,
+    `${suppressed} of ${second.length} steps below the old high-water mark`);
+}
+
 console.log('\nnot-running is not the same as at-the-beginning');
 
 {

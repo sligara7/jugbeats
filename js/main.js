@@ -32,8 +32,6 @@ if (incoming) session.openEverything();
 const alreadySounded = new Set();
 /** Lanes held right now, mapped to the last absolute step written for each. */
 const holding = new Map();
-/** Clicks already scheduled, so a re-entered window cannot double them. */
-let clickedTo = 0;
 
 const stage = new Stage(el('stage'), clock, { onHit, onRelease });
 
@@ -120,9 +118,20 @@ clock.onSchedule((from, to, timeOf) => {
 
   for (let step = from; step < to; step++) {
     // The click, on every beat, while it is still earning its place.
-    if (step % 4 === 0 && step >= clickedTo && session.clickAudible) {
+    //
+    // There is deliberately NO extra guard against scheduling the same beat
+    // twice. There used to be — a high-water mark of the last step clicked —
+    // and it was the bug that silenced the metronome for half a minute after
+    // she reset her tempo: the clock's step counter goes back to zero on a
+    // restart and the high-water mark did not, so every click was suppressed
+    // until absolute time caught up with the previous attempt.
+    //
+    // The clock already promises each step exactly once, in order, with no
+    // gaps, and there is a test asserting it across a stop and a restart. A
+    // second guard on top of a guaranteed property does not add safety; it adds
+    // a second thing that can be wrong, and here it was.
+    if (step % 4 === 0 && session.clickAudible) {
       voices.playClick(timeOf(step), { accent: step % STEPS_PER_BAR === 0 });
-      clickedTo = step + 1;
     }
 
     for (const round of ROUNDS) {
@@ -270,6 +279,10 @@ el('reset').addEventListener('click', (e) => {
     // every scheduled time and every block on screen is derived from it — so
     // going back to tapping means going back to not running.
     clock.stop();
+    // Absolute step numbers start again from zero, so anything remembered
+    // against them is now about a different moment. This is the same class of
+    // staleness that silenced the click for half a minute.
+    alreadySounded.clear();
     session.clearTempo();
   } else {
     session.reset();
