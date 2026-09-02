@@ -432,8 +432,30 @@ export function renderPad(sr, { rootHz = ROOT_HZ, seconds = 4, octaves = 2 } = {
 // a property of the design rather than a rule someone has to remember.
 // ---------------------------------------------------------------------------
 
-/** Natural minor, as semitone offsets. Phonk lives here almost exclusively. */
-export const MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];
+/**
+ * MINOR PENTATONIC, as semitone offsets from the root.
+ *
+ * Natural minor was here first, and it was right while she could only play one
+ * note at a time. The moment two keys can be pressed together the scale has to
+ * do more work: natural minor contains semitones — the fifth against the flat
+ * sixth in particular — and a semitone played as a chord is the one combination
+ * a child would hear as a mistake.
+ *
+ * The pentatonic is natural minor with exactly those two clashing degrees
+ * removed: root, flat third, fourth, fifth, flat seventh. EVERY PAIR IN IT IS
+ * CONSONANT, so any combination she can press — in any order, together or apart
+ * — sounds deliberate. That is what makes "she cannot play a wrong note" true
+ * for chords and not only for melodies (dec:pentatonic-for-chords).
+ *
+ * It costs two of seven degrees, and gives up nothing musically: this is the
+ * scale most of the music she listens to is actually built from.
+ */
+export const SCALE_STEPS = [0, 3, 5, 7, 10];
+export const SCALE_NAME = 'minor pentatonic';
+
+/** The scale natural minor used to be, kept only so a test can prove the
+ *  pentatonic fixed something real rather than being an equivalent relabel. */
+export const NATURAL_MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];
 
 /** Root note. C2 for the 808, which is where phonk sub sits on a phone. */
 export const ROOT_HZ = 65.41;
@@ -444,10 +466,10 @@ export const ROOT_HZ = 65.41;
  * a legal thing to ask for.
  */
 export function degreeToHz(degree, octaves = 0) {
-  const n = MINOR_STEPS.length;
+  const n = SCALE_STEPS.length;
   const idx = ((degree % n) + n) % n;
   const oct = Math.floor(degree / n) + octaves;
-  return ROOT_HZ * Math.pow(2, oct + MINOR_STEPS[idx] / 12);
+  return ROOT_HZ * Math.pow(2, oct + SCALE_STEPS[idx] / 12);
 }
 
 export const VOICES = {

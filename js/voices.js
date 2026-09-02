@@ -16,11 +16,11 @@
 // This part never reads her track and never reads the screen.
 
 import {
-  render808, renderLead, renderClick, renderPad, degreeToHz, MINOR_STEPS, NEUTRAL,
+  render808, renderLead, renderClick, renderPad, degreeToHz, SCALE_STEPS, NEUTRAL,
 } from './dsp.js';
 
 /** Degrees we pre-render. One octave of the scale is more than four lanes need. */
-const DEGREES = MINOR_STEPS.map((_, i) => i);
+const DEGREES = SCALE_STEPS.map((_, i) => i);
 
 /**
  * Per-voice level, applied on top of whatever the caller asks for.

@@ -58,15 +58,19 @@ export const ROUNDS = [
     id: 'r2', label: 'Hats', full: 'Hats & Cowbell', sustains: false, click: false,
     lanes: [{ voice: 'hat', name: 'HAT' }, { voice: 'cowbell', name: 'BELL' }],
   },
+  // The degrees below index into the MINOR PENTATONIC: 0 root, 1 flat third,
+  // 2 fourth, 3 fifth, 4 flat seventh. Every pair of those is consonant, which
+  // is what will let her press two at once and never hear a mistake
+  // (dec:pentatonic-for-chords).
   {
     id: 'r3', label: '808', full: 'The 808', sustains: true, click: false,
-    // Root and fifth. The two notes that make a bass line and never disagree.
-    lanes: [{ voice: 'bass', degree: 0, name: 'LOW' }, { voice: 'bass', degree: 4, name: 'HIGH' }],
+    // Root and fifth — the two notes most bass lines are actually made of.
+    lanes: [{ voice: 'bass', degree: 0, name: 'LOW' }, { voice: 'bass', degree: 3, name: 'HIGH' }],
   },
   {
     id: 'r4', label: 'Melody', full: 'The Melody', sustains: true, click: false,
     // Root and flat third — the minor third is the phonk interval.
-    lanes: [{ voice: 'lead', degree: 0, name: 'ONE' }, { voice: 'lead', degree: 2, name: 'TWO' }],
+    lanes: [{ voice: 'lead', degree: 0, name: 'ONE' }, { voice: 'lead', degree: 1, name: 'TWO' }],
   },
 ];
 
