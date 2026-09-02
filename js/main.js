@@ -6,48 +6,34 @@
 //
 // It also owns the two things that are the page's problem rather than the
 // game's: the first-tap gate that starts audio (dec:beat-the-silent-switch) and
-// asking her to turn the phone, which iOS Safari will not let us do for her
-// (req:works-on-her-iphone).
+// asking her to turn the phone, which iOS Safari will not do for us.
 
-import { Clock } from './clock.js';
+import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, LAYERS, GRID, quantise } from './track.js';
+import { Track, ROUNDS, GRID, quantise } from './track.js';
 import { Stage } from './stage.js';
-import { Coach } from './coach.js';
+import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share } from './link.js';
 
 const el = (id) => document.getElementById(id);
 
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
-const clock = new Clock(ctx);
 const voices = new Voices(ctx);
 
-// A track may already be in the address bar, because someone sent one
-// (dec:track-in-the-url). If so it is hers to hear and to take apart, so every
-// layer is open from the start rather than earned again.
+// A track may already be in the address bar, because someone sent one. If so it
+// is hers to hear and take apart, so every round is open from the start.
 const incoming = trackFromLocation();
 const track = incoming ?? new Track();
-const coach = new Coach(track);
-if (incoming) coach.unlockAll();
+const clock = new Clock(ctx, { bpm: track.bpm });
+const session = new Session(track);
+if (incoming) session.openEverything();
 
-/**
- * Notes she has just played live, which must not also be played by the
- * scheduler on this pass.
- *
- * Quantising rounds to the NEAREST sixteenth, so a tap slightly early lands on
- * a step that is still in the future — and the scheduler would then sound it
- * again a few tens of milliseconds later, as a flam. She heard it when she
- * pressed; that is the one that counts.
- */
+/** Notes she has just played live, which the scheduler must not repeat. */
 const alreadySounded = new Set();
-
-/**
- * Lanes she is holding right now, mapped to the last absolute step recorded for
- * each. Holding a key fills the steps it covers, and those adjacent steps are
- * merged back into one long block by the track — so pressing and holding writes
- * a held note, which is the same gesture as holding a piano key down.
- */
+/** Lanes held right now, mapped to the last absolute step written for each. */
 const holding = new Map();
+/** Clicks already scheduled, so a re-entered window cannot double them. */
+let clickedTo = 0;
 
 const stage = new Stage(el('stage'), clock, { onHit, onRelease });
 
@@ -55,45 +41,45 @@ const stage = new Stage(el('stage'), clock, { onHit, onRelease });
 // The hot path. Sound first, recording after — never the other way round.
 // ---------------------------------------------------------------------------
 
-function voiceFor(layer, lane) {
-  const slot = layer.lanes[lane];
-  return typeof slot === 'string'
-    ? { voice: slot, degree: 0 }
-    : { voice: layer.id, degree: slot };
+function voiceFor(round, lane) {
+  const l = round.lanes[lane];
+  return { voice: l.voice, degree: l.degree ?? 0 };
 }
 
 function onHit(lane) {
   if (!voices.ready) return;
-  const layer = coach.layer;
-  const { voice, degree } = voiceFor(layer, lane);
 
-  // 1. Sound. Now, with no time argument, so it goes out at the earliest
-  //    moment the audio thread can take it.
-  voices.play(voice, { degree });
-
-  // 2. Recording, afterwards.
-  const at = clock.now();
-  if (at === null) return;
-  const slot = track.record(layer.id, lane, at);
-
-  // The SAME function the track quantises with — deliberately shared rather than
-  // reimplemented. This used to round to the nearest sixteenth while the track
-  // rounded to the nearest eighth, so whenever the two disagreed the guard was
-  // filed under a step the note does not live on, missed, and the scheduler
-  // sounded the note again a fraction of a beat after she heard it. Roughly
-  // every other tap doubled. Four lanes of that is not a drum kit, it is a room
-  // full of slot machines.
-  const absStep = quantise(at);
-  if (clock.timeOf(absStep) > ctx.currentTime) {
-    alreadySounded.add(`${layer.id}:${lane}:${absStep}`);
+  // Before the tempo exists, the keys are how she taps it out. She is still
+  // hearing the sound she will be playing, so setting the tempo already sounds
+  // like the instrument rather than like a settings screen.
+  if (session.state === 'tempo' && !session.tempoIsSet) {
+    voices.play(voiceFor(session.round, lane).voice, { degree: 0 });
+    const bpm = session.tapTempo();
+    if (bpm !== null) clock.setTempo(bpm);
+    return;
   }
 
-  holding.set(lane, absStep);
+  const round = session.round;
+  const { voice, degree } = voiceFor(round, lane);
 
-  // 3. And only then does the coach get to notice.
-  coach.noteRecorded(layer.id);
-  renderStrip();
-  void slot;
+  // 1. Sound. Now, with no time argument, so it goes at the earliest moment the
+  //    audio thread will take it.
+  voices.play(voice, { degree });
+
+  // 2. Recording, afterwards — and only while she is actually recording.
+  if (!session.recording) return;
+  const at = clock.now();
+  if (at === null) return;
+  track.record(round.id, lane, at);
+
+  // The SAME quantiser the track uses. These were once two different roundings
+  // and where they disagreed a note sounded twice.
+  const absStep = quantise(at);
+  if (clock.timeOf(absStep) > ctx.currentTime) {
+    alreadySounded.add(`${round.id}:${lane}:${absStep}`);
+  }
+  holding.set(lane, absStep);
+  refresh();
 }
 
 function onRelease(lane) {
@@ -101,58 +87,56 @@ function onRelease(lane) {
 }
 
 /**
- * Extend every held lane into the step the playhead has now reached.
+ * Extend held lanes into the step the playhead has reached.
  *
- * Uses FLOOR rather than nearest, unlike the initial press: a press should snap
- * to whichever grid step it is closest to, but a hold should only ever fill
- * steps she has actually reached. Rounding here would write a note slightly
- * ahead of her thumb.
+ * FLOOR, not nearest, unlike the initial press: a press snaps to whichever step
+ * it is closest to, but a hold may only fill steps she has actually reached.
+ * Rounding here would write a note slightly ahead of her thumb.
  */
 function extendHeld() {
-  if (!holding.size || !voices.ready) return;
-  // Nothing to extend on a layer where holding means nothing. Holding a kick
-  // would otherwise write a kick on every step she held it through, which is a
-  // machine gun rather than a long note.
-  if (!coach.layer.sustains) return;
+  if (!holding.size || !session.recording || !session.round.sustains) return;
   const at = clock.now();
   if (at === null) return;
   const reached = Math.floor(at / GRID) * GRID;
 
   for (const [lane, lastStep] of holding) {
     if (reached <= lastStep) continue;
-    // Fill in every step crossed, so a stall cannot leave a gap in the middle
-    // of a held note.
+    // Fill every step crossed, so a stall cannot leave a gap mid-note.
     for (let s = lastStep + GRID; s <= reached; s += GRID) {
-      track.record(coach.layer.id, lane, s);
-      alreadySounded.add(`${coach.layer.id}:${lane}:${s}`);
+      track.record(session.round.id, lane, s);
+      alreadySounded.add(`${session.round.id}:${lane}:${s}`);
     }
     holding.set(lane, reached);
   }
 }
 
 clock.onSchedule((from, to, timeOf) => {
-  // The tick is also the only heartbeat a held note needs — no second timer,
-  // because there is only ever one clock (dec:one-clock).
+  // The tick is the only heartbeat anything needs — there is one clock.
   extendHeld();
-
+  session.tick(clock.now() ?? 0);
   if (!voices.ready) return;
+
   const loop = track.loopSteps;
 
   for (let step = from; step < to; step++) {
-    const slot = ((step % loop) + loop) % loop;
-    for (const layer of LAYERS) {
-      for (const lane of track.lanesAt(layer.id, slot)) {
-        // A held block sounds ONCE, where it begins, and then rings for its
-        // length. Firing on every step it covers would turn one long 808 note
-        // into a machine-gun of retriggers.
-        if (!track.isRunStart(layer.id, lane, slot)) continue;
+    // The click, on every beat, while it is still earning its place.
+    if (step % 4 === 0 && step >= clickedTo && session.clickAudible) {
+      voices.playClick(timeOf(step), { accent: step % STEPS_PER_BAR === 0 });
+      clickedTo = step + 1;
+    }
 
-        const key = `${layer.id}:${lane}:${step}`;
+    const slot = ((step % loop) + loop) % loop;
+    for (const round of ROUNDS) {
+      // Only rounds she has KEPT play back. The one in her hands is heard live.
+      if (!track.accepted.has(round.id) && round.id !== session.round.id) continue;
+
+      for (const lane of track.lanesAt(round.id, slot)) {
+        // A held block sounds once, where it begins, and rings for its length.
+        if (!track.isRunStart(round.id, lane, slot)) continue;
+        const key = `${round.id}:${lane}:${step}`;
         if (alreadySounded.delete(key)) continue;
-        const { voice, degree } = voiceFor(layer, lane);
-        // Layers she is not currently playing sit back a little, so the one in
-        // her hands is always the one she hears most clearly.
-        const gain = layer.id === coach.layer.id ? 1 : 0.72;
+        const { voice, degree } = voiceFor(round, lane);
+        const gain = round.id === session.round.id ? 1 : 0.8;
         voices.play(voice, { degree, time: timeOf(step), gain });
       }
     }
@@ -160,32 +144,102 @@ clock.onSchedule((from, to, timeOf) => {
 });
 
 // ---------------------------------------------------------------------------
-// The layer strip — the only navigation in the game.
+// The transport. One big button in the middle, where neither thumb rests.
 // ---------------------------------------------------------------------------
 
-function renderStrip() {
-  const strip = el('layers');
-  strip.innerHTML = '';
-  LAYERS.forEach((layer, i) => {
-    const b = document.createElement('button');
-    b.className = 'layer';
-    b.textContent = layer.label;
-    b.disabled = i >= coach.unlocked;
-    b.setAttribute('aria-current', i === coach.layerIndex ? 'true' : 'false');
-    b.addEventListener('click', () => coach.goTo(i));
-    strip.appendChild(b);
-  });
+function transportLabel() {
+  if (session.state === 'recording') return 'STOP';
+  if (session.state === 'counting') return '…';
+  if (session.state === 'done') return 'DONE';
+  if (!session.tempoIsSet) return `TAP ${session.tapsSoFar}/4`;
+  return 'START';
 }
 
-coach.onNudge((n) => {
-  if (n.kind === 'layer-changed') {
-    stage.setLayer(n.layerId);
-  } else if (n.kind === 'layer-offered') {
-    flash(`nice — now try the ${LAYERS[n.index].label.toLowerCase()}`);
-  } else if (n.kind === 'track-done') {
-    flash('you made a whole track');
+function refresh() {
+  el('transport').textContent = transportLabel();
+  el('transport').dataset.state = session.state;
+  el('round').textContent = session.round?.full ?? '';
+  el('bpm').textContent = `${track.bpm} bpm`;
+  el('reset').hidden = track.count(session.round?.id) === 0;
+
+  const strip = el('rounds');
+  strip.innerHTML = '';
+  ROUNDS.forEach((r, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = r.label;
+    b.disabled = i > session.furthestReachable();
+    b.setAttribute('aria-current', i === session.roundIndex ? 'true' : 'false');
+    if (track.accepted.has(r.id)) b.classList.add('kept');
+    b.addEventListener('click', (e) => { e.stopPropagation(); session.goTo(i); });
+    strip.appendChild(b);
+  });
+
+  stage.setRound(session.round);
+  stage.setArmed(session.recording);
+}
+
+el('transport').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (session.state === 'recording') {
+    session.stop();
+  } else if (session.state === 'tempo' && session.tempoIsSet) {
+    // Count her in from the top of the next bar, so the count-in itself lands
+    // musically rather than wherever she happened to press.
+    if (!clock.running) clock.start();
+    const now = clock.now() ?? 0;
+    const nextBar = (Math.floor(now / STEPS_PER_BAR) + 1) * STEPS_PER_BAR;
+    session.begin(nextBar + COUNT_IN_BARS * STEPS_PER_BAR);
   }
-  renderStrip();
+  refresh();
+});
+
+el('reset').addEventListener('click', (e) => {
+  e.stopPropagation();
+  session.reset();
+  holding.clear();
+  refresh();
+});
+
+el('share').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (track.isEmpty()) { flash('play something first'); return; }
+  const how = await share(track);
+  if (how === 'shared') flash('sent');
+  else if (how === 'copied') flash('link copied — paste it to someone');
+  else flash('could not share, sorry');
+});
+
+// ---------------------------------------------------------------------------
+// What the session says, and how the page shows it
+// ---------------------------------------------------------------------------
+
+session.onNudge((n) => {
+  switch (n.kind) {
+    case 'tempo-set':
+      clock.setTempo(track.bpm);
+      flash(`${track.bpm} — that's your speed`);
+      break;
+    case 'counting-in':
+      voices.setClickLevel(0.9, 0.15);
+      break;
+    case 'recording':
+      flash(`play the ${session.round.full.toLowerCase()}`);
+      break;
+    case 'round-kept':
+      // The click retires here: from now on her own beat is the click.
+      if (ROUNDS[n.index]?.click) voices.setClickLevel(0, 1.2);
+      flash('kept');
+      break;
+    case 'next-round':
+      flash(`now the ${session.round.full.toLowerCase()}`);
+      break;
+    case 'round-reset': flash('cleared — go again'); break;
+    case 'nothing-to-keep': flash('play something first'); break;
+    case 'all-done': flash('you made a whole track'); break;
+    default: break;
+  }
+  refresh();
 });
 
 let flashTimer = null;
@@ -194,60 +248,55 @@ function flash(text) {
   n.textContent = text;
   n.classList.add('show');
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => n.classList.remove('show'), 2600);
+  flashTimer = setTimeout(() => n.classList.remove('show'), 2400);
 }
 
+/** The count-in, shown as a number counting down the empty middle. */
+setInterval(() => {
+  if (session.state !== 'counting') { stage.setCountdown(null); return; }
+  const now = clock.now();
+  if (now === null) return;
+  const beatsLeft = Math.ceil((session.countInEndsAtStep - now) / 4);
+  stage.setCountdown(Math.max(1, beatsLeft));
+}, 60);
+
 // ---------------------------------------------------------------------------
-// Starting the sound. All of this must happen inside the first gesture.
+// Starting the sound. All of this happens inside the first gesture.
 // ---------------------------------------------------------------------------
 
-/**
- * Silent one-sample WAV. Playing this inside the gesture shifts the iOS audio
- * session on versions without navigator.audioSession, which is what lets sound
- * through the ringer switch (dec:beat-the-silent-switch, layer 2).
- */
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
 
 async function startAudio() {
-  // Layer 1: ask iOS for a playback session outright. Supported on recent
-  // Safari and the only non-hack way through the switch.
-  try {
-    if (navigator.audioSession) navigator.audioSession.type = 'playback';
-  } catch { /* not available; fall through */ }
-
+  // Layer 1: ask iOS for a playback session outright — the only non-hack way
+  // through the ringer switch.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older iOS */ }
   // Layer 2: the older trick, still inside the gesture.
   try {
     const a = new Audio(SILENT_WAV);
-    a.loop = true;
-    a.volume = 0;
-    a.setAttribute('playsinline', '');
+    a.loop = true; a.volume = 0; a.setAttribute('playsinline', '');
     await a.play();
     window.__mjKeepAlive = a; // hold a reference or it is collected and stops
   } catch { /* best effort */ }
 
   await ctx.resume();
-  stage.setAudioLive(true);
-  clock.start();
+  voices.startDrone();
+  refresh();
 }
 
-el('gate').addEventListener(
-  'click',
-  async () => {
-    el('gate').classList.add('gone');
-    await startAudio();
-  },
-  { once: true }
-);
+el('gate').addEventListener('click', async () => {
+  el('gate').classList.add('gone');
+  await startAudio();
+}, { once: true });
 
-// iOS suspends the context on background. A game that is silent after a phone
-// call is the same failure as the silent switch, by another route.
+// iOS suspends the context on background. Silent after a phone call is the same
+// failure as the silent switch, by another route.
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && clock.running) ctx.resume();
+  if (!document.hidden) ctx.resume();
 });
 
 // ---------------------------------------------------------------------------
-// Orientation. Safari on iOS cannot be made to lock it, so we ask.
+// Orientation. Safari on iOS will not lock it, so we ask.
 // ---------------------------------------------------------------------------
 
 function checkOrientation() {
@@ -255,66 +304,28 @@ function checkOrientation() {
   document.body.classList.toggle('portrait', portrait);
   if (!portrait) stage.resize();
 }
-
 window.addEventListener('resize', checkOrientation);
 window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 250));
-
-// ---------------------------------------------------------------------------
-// Sending it back. The round trip is the point (flow:round-trip).
-// ---------------------------------------------------------------------------
-
-// Until now a layer could only ever get denser — every tap added a note and
-// nothing took one away, so a busy pattern was permanent. That is most of how
-// the drums got out of hand. Starting a layer again has to be one tap.
-el('clear').addEventListener('click', (e) => {
-  e.stopPropagation();
-  const layer = coach.layer;
-  if (track.count(layer.id) === 0) return;
-  track.clear(layer.id);
-  holding.clear();
-  flash(`${layer.label.toLowerCase()} cleared`);
-});
-
-el('share').addEventListener('click', async (e) => {
-  e.stopPropagation();
-  if (track.isEmpty()) {
-    flash('play something first');
-    return;
-  }
-  // Inside the gesture, or iOS refuses the share sheet.
-  const how = await share(track);
-  if (how === 'shared') flash('sent');
-  else if (how === 'copied') flash('link copied — paste it to someone');
-  else flash('could not share, sorry');
-});
 
 // ---------------------------------------------------------------------------
 // Go
 // ---------------------------------------------------------------------------
 
 checkOrientation();
-renderStrip();
 stage.mount(track);
-stage.setLayer(coach.layer.id);
+refresh();
 
-if (incoming) {
-  el('gate-title').textContent = 'someone made you a beat';
-}
+if (incoming) el('gate-title').textContent = 'someone made you a beat';
 
-voices
-  .load()
-  .then(() => {
-    // Her shaping numbers arrived with the track, so the voices have to be
-    // rebuilt from them before the first note sounds.
-    for (const inst of ['bass', 'lead']) {
-      if (track.shaping[inst] && Object.keys(track.shaping[inst]).length) {
-        voices.setShaping(inst, track.shaping[inst]);
-      }
+voices.load().then(() => {
+  for (const inst of ['bass', 'lead']) {
+    if (track.shaping[inst] && Object.keys(track.shaping[inst]).length) {
+      voices.setShaping(inst, track.shaping[inst]);
     }
-    el('gate-label').textContent = incoming ? 'tap to hear it' : 'tap to start';
-    el('gate').classList.add('loaded');
-  })
-  .catch((err) => {
-    el('gate-label').textContent = 'could not load the sounds';
-    console.error(err);
-  });
+  }
+  el('gate-label').textContent = incoming ? 'tap to hear it' : 'tap to start';
+  el('gate').classList.add('loaded');
+}).catch((err) => {
+  el('gate-label').textContent = 'could not load the sounds';
+  console.error(err);
+});

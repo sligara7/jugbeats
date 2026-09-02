@@ -15,7 +15,9 @@
 //
 // This part never reads her track and never reads the screen.
 
-import { render808, renderLead, degreeToHz, MINOR_STEPS, NEUTRAL } from './dsp.js';
+import {
+  render808, renderLead, renderClick, renderPad, degreeToHz, MINOR_STEPS, NEUTRAL,
+} from './dsp.js';
 
 /** Degrees we pre-render. One octave of the scale is more than four lanes need. */
 const DEGREES = MINOR_STEPS.map((_, i) => i);
@@ -70,6 +72,19 @@ export class Voices {
     this.clipper.curve = softClipCurve(1.15);
     this.clipper.oversample = '2x';
     this.master.connect(this.clipper).connect(ctx.destination);
+
+    // The click sits OUTSIDE the master clipper. It is not part of the music and
+    // must not be squashed by, or contribute to, the mix glue — it has to stay
+    // legible under drums at a level that never competes with them.
+    this.clickBus = ctx.createGain();
+    this.clickBus.gain.value = 0;
+    this.clickBus.connect(ctx.destination);
+
+    // The drone is a floor, not a layer: through the glue, well down.
+    this.droneBus = ctx.createGain();
+    this.droneBus.gain.value = 0;
+    this.droneBus.connect(this.master);
+    this._drone = null;
   }
 
   /**
@@ -92,8 +107,60 @@ export class Voices {
       })
     );
 
+    const sr = this.ctx.sampleRate;
+    this.click = toBuffer(this.ctx, renderClick(sr, {}), sr);
+    this.clickAccent = toBuffer(this.ctx, renderClick(sr, { accent: true }), sr);
+    this.pad = toBuffer(this.ctx, renderPad(sr, {}), sr);
+
     this.renderPitched();
     this.ready = true;
+  }
+
+  // -------------------------------------------------------------------------
+  // The click and the drone
+  // -------------------------------------------------------------------------
+
+  /** One tick of the metronome. `accent` marks beat one. */
+  playClick(time, { accent = false } = {}) {
+    const buf = accent ? this.clickAccent : this.click;
+    if (!buf) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(this.clickBus);
+    src.start(Math.max(time ?? this.ctx.currentTime, this.ctx.currentTime));
+  }
+
+  /**
+   * Fade the click in or out over `seconds`.
+   *
+   * Fading rather than switching because the click RETIRES once her beat can
+   * keep time for her (dec:she-sets-the-tempo), and a metronome that vanishes
+   * between one beat and the next reads as a fault rather than as a handover.
+   */
+  setClickLevel(level, seconds = 0.6) {
+    const g = this.clickBus.gain;
+    g.cancelScheduledValues(this.ctx.currentTime);
+    g.setValueAtTime(g.value, this.ctx.currentTime);
+    g.linearRampToValueAtTime(level, this.ctx.currentTime + seconds);
+  }
+
+  /** Start the pedal point. Loops forever; only its level ever changes. */
+  startDrone(level = 0.18) {
+    if (this._drone || !this.pad) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.pad;
+    src.loop = true;
+    src.connect(this.droneBus);
+    src.start();
+    this._drone = src;
+    this.setDroneLevel(level, 2.5); // in slowly: a pad that arrives suddenly is a noise
+  }
+
+  setDroneLevel(level, seconds = 1.5) {
+    const g = this.droneBus.gain;
+    g.cancelScheduledValues(this.ctx.currentTime);
+    g.setValueAtTime(g.value, this.ctx.currentTime);
+    g.linearRampToValueAtTime(level, this.ctx.currentTime + seconds);
   }
 
   /**

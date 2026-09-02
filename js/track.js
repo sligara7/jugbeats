@@ -5,78 +5,86 @@
 // has to be expressible in the link format without translation, because this is
 // the thing that gets packed into a URL and sent to someone.
 //
-// Governed by dec:one-clock — recording happens AFTER the sound has already
-// played, never between her thumb and her ear — and by dec:layers-advance-the-keys,
-// which is where the layer list comes from.
+// Governed by dec:two-thumbs-loop-pedal — two lanes per round, built up one
+// round at a time — and by dec:one-clock, since recording happens after the
+// sound has already played, never between her thumb and her ear.
 
 export const STEPS_PER_BAR = 16;
 
+/** Two lanes. One per thumb (dec:two-thumbs-loop-pedal). */
+export const LANES = 2;
+
 /**
- * The grid she can actually place notes on, in sixteenths. 2 = eighth notes.
+ * The grid she can land on, in sixteenths. 2 = eighth notes.
  *
- * THIS IS A PLAYABILITY DECISION, NOT A MUSICAL ONE (dec:play-on-eighths). The
- * first build quantised to sixteenths, and at 138bpm two adjacent sixteenths are
- * 108 milliseconds apart — the owner's verdict on playing it was that blocks
- * arriving straight after each other were impossible to play, which was exactly
- * right. Eighths put the tightest possible spacing at ~217ms, which a
- * nine-year-old's thumb can actually hit.
- *
- * The loop still RUNS on sixteenths, because swing needs somewhere to sit
- * between the eighths. She just cannot land on the in-between ones.
+ * A playability decision, not a musical one: at 138bpm two adjacent sixteenths
+ * are 108ms apart, which is not hard but impossible. Eighths put the tightest
+ * spacing at ~217ms. The loop still RUNS on sixteenths so swing has somewhere
+ * to sit between the eighths; she just cannot land on the in-between ones.
  */
 export const GRID = 2;
 
 /**
  * Snap a continuous playhead position to the grid she can land on.
  *
- * EXPORTED SO THERE IS EXACTLY ONE OF THESE. It was previously done in two
- * places with two different roundings — the track to the nearest eighth, the
- * shell's double-trigger guard to the nearest sixteenth — and the moment they
- * disagreed the guard was filed against a step the note does not live on, so
- * the note sounded twice. Anything that needs to know which step a moment
- * belongs to calls this.
+ * EXPORTED SO THERE IS EXACTLY ONE OF THESE. It was once done in two places
+ * with two different roundings, and where they disagreed a note sounded twice.
  */
 export function quantise(atStep) {
   return Math.round(atStep / GRID) * GRID;
 }
 
 /**
- * The layers, in the order the keys hand over. Each names what its four lanes
- * play. Drums map to baked voices; bass and lead map to scale degrees.
+ * The rounds, in the order she plays them (dec:two-thumbs-loop-pedal).
  *
- * Four lanes each, because there are four keys (dec:four-keys-two-thumbs).
+ * Two sounds each, one per thumb. Kick and snare first because those two alone
+ * ARE a beat and everything else is decoration. Hats and cowbell second because
+ * that is what arrives next in the phonk she listens to — a tom would have made
+ * it a drum lesson (dec:idea-which-two-sounds-per-round).
  *
- * `sustains` is whether holding a key means anything on that layer. It does not
- * for drums, and the owner put it plainly: you do not hold a drum. A kick is a
- * struck object — it has one length, its own — so consecutive kicks stay
- * separate hits and holding the key does nothing at all. An 808 and a melody
- * note DO have a length you choose, which is exactly what holding is for.
+ * `sustains` is whether holding a key means anything. You do not hold a drum:
+ * a drum is a struck object and its length is its own. A pitched note has a
+ * length the player chooses, which is what holding is for.
+ *
+ * `click` marks the round the metronome is needed for. It retires after round
+ * one, because from then on her own beat is the click.
  */
-export const LAYERS = [
-  { id: 'drums', label: 'Drums', lanes: ['kick', 'snare', 'hat', 'cowbell'], sustains: false },
-  { id: 'bass',  label: '808',   lanes: [0, 2, 3, 4],  sustains: true },  // root, ♭3, 4, 5
-  { id: 'lead',  label: 'Melody', lanes: [0, 4, 5, 7], sustains: true },  // root, 5, ♭6, octave
+export const ROUNDS = [
+  {
+    id: 'r1', label: 'Beat', full: 'Kick & Snare', sustains: false, click: true,
+    lanes: [{ voice: 'kick', name: 'KICK' }, { voice: 'snare', name: 'SNARE' }],
+  },
+  {
+    id: 'r2', label: 'Hats', full: 'Hats & Cowbell', sustains: false, click: false,
+    lanes: [{ voice: 'hat', name: 'HAT' }, { voice: 'cowbell', name: 'BELL' }],
+  },
+  {
+    id: 'r3', label: '808', full: 'The 808', sustains: true, click: false,
+    // Root and fifth. The two notes that make a bass line and never disagree.
+    lanes: [{ voice: 'bass', degree: 0, name: 'LOW' }, { voice: 'bass', degree: 4, name: 'HIGH' }],
+  },
+  {
+    id: 'r4', label: 'Melody', full: 'The Melody', sustains: true, click: false,
+    // Root and flat third — the minor third is the phonk interval.
+    lanes: [{ voice: 'lead', degree: 0, name: 'ONE' }, { voice: 'lead', degree: 2, name: 'TWO' }],
+  },
 ];
 
-const layerById = (id) => LAYERS.find((l) => l.id === id);
+export const roundById = (id) => ROUNDS.find((r) => r.id === id);
 
 export class Track {
-  /**
-   * @param {{bars?: number}} opts
-   *
-   * TWO BARS, not four. Four bars is thirty-two eighth-note slots per lane and a
-   * seven-second loop — far more room than a nine-year-old wants to fill, and
-   * the owner's verdict on playing it was that the drums were simply too much to
-   * keep up with. Two bars halves everything, and it brings her pattern back
-   * round twice as often, which is most of the satisfaction of making a loop.
-   */
+  /** @param {{bars?: number}} opts */
   constructor({ bars = 2 } = {}) {
     this.bars = bars;
-    /** events[layerId] = Set of encoded "step*4+lane" — a Set so a double tap
-     *  on the same slot is idempotent rather than a stack of identical notes. */
-    this.events = Object.fromEntries(LAYERS.map((l) => [l.id, new Set()]));
+    /** events[roundId] = Set of "slot*LANES + lane". A Set so a double tap on
+     *  the same slot is idempotent rather than a stack of identical notes. */
+    this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
+    /** Which rounds she has accepted with STOP. Only these play back. */
+    this.accepted = new Set();
     /** Her shaping numbers, per pitched instrument. Small, flat, link-sized. */
     this.shaping = { bass: {}, lead: {} };
+    /** The tempo she tapped. Part of the track: it is hers, not the game's. */
+    this.bpm = 100;
   }
 
   get loopSteps() {
@@ -84,81 +92,61 @@ export class Track {
   }
 
   /**
-   * Record a tap.
-   *
-   * `atStep` is the continuous position the clock reported when she touched;
-   * it is rounded to the nearest EIGHTH, which is what makes a nine-year-old
-   * sound like she can play and — just as important — guarantees that nothing
-   * she records can come back closer together than her thumb can manage.
-   * Rounding is deliberately generous and symmetric: quantising late-only would
-   * teach her to rush.
-   *
-   * Returns the loop step it landed on, so the stage can flash the right slot.
+   * Record a tap. Rounded to the nearest eighth — generous and symmetric, since
+   * quantising late-only would teach her to rush.
    */
-  record(layerId, lane, atStep) {
-    const quantised = quantise(atStep);
-    const slot = ((quantised % this.loopSteps) + this.loopSteps) % this.loopSteps;
-    this.events[layerId]?.add(slot * 4 + lane);
+  record(roundId, lane, atStep) {
+    const slot = ((quantise(atStep) % this.loopSteps) + this.loopSteps) % this.loopSteps;
+    this.events[roundId]?.add(slot * LANES + lane);
     return slot;
   }
 
-  /** Remove a note. Out-of-range is refused rather than clamped — a silently
-   *  clamped note lands on the wrong beat and sounds like a timing bug. */
-  erase(layerId, lane, slot) {
+  /** Out-of-range is refused rather than clamped: a silently clamped note lands
+   *  on the wrong beat and sounds like a timing bug. */
+  erase(roundId, lane, slot) {
     if (slot < 0 || slot >= this.loopSteps) throw new RangeError(`step ${slot} outside loop`);
-    this.events[layerId]?.delete(slot * 4 + lane);
+    this.events[roundId]?.delete(slot * LANES + lane);
   }
 
-  /** Every lane firing on this loop step, per layer. */
-  lanesAt(layerId, slot) {
+  lanesAt(roundId, slot) {
     const out = [];
-    const set = this.events[layerId];
+    const set = this.events[roundId];
     if (!set) return out;
-    for (let lane = 0; lane < 4; lane++) if (set.has(slot * 4 + lane)) out.push(lane);
+    for (let lane = 0; lane < LANES; lane++) if (set.has(slot * LANES + lane)) out.push(lane);
     return out;
   }
 
-  /** All notes in a layer as {slot, lane}. Raw occupancy; prefer runs(). */
-  notes(layerId) {
+  notes(roundId) {
     const out = [];
-    for (const v of this.events[layerId] ?? []) out.push({ slot: (v / 4) | 0, lane: v % 4 });
+    for (const v of this.events[roundId] ?? []) {
+      out.push({ slot: Math.floor(v / LANES), lane: v % LANES });
+    }
     return out;
   }
 
   /**
-   * The notes of a layer as HELD BLOCKS — consecutive slots in one lane merged
-   * into a single run of {lane, start, length}.
+   * The notes of a round as HELD BLOCKS — consecutive slots merged into one run.
    *
-   * This is the whole answer to a problem the owner found by playing it: four
-   * notes in a row read as four things to hit, and hitting four things in a row
-   * is not possible. In the game she already plays they would be ONE long block
-   * that you press once and hold, exactly like holding a piano key for the
-   * length of the note. Same data underneath — the stored slots and therefore
-   * the shared link do not change at all — but what she sees and what she has
-   * to do both get simpler.
-   *
-   * Runs deliberately do NOT wrap around the end of the loop. A block that
-   * disappeared off the bottom and reappeared at the top would be harder to read
-   * than the two blocks it replaced.
+   * On a round that does not sustain, every note is its own block: merging two
+   * kicks would draw a sustain that cannot be played and cannot be heard.
+   * Runs do not wrap the end of the loop; a block that vanished off the bottom
+   * and reappeared at the top would be harder to read than the two it replaced.
    */
-  runs(layerId) {
-    const set = this.events[layerId];
+  runs(roundId) {
+    const set = this.events[roundId];
     const out = [];
     if (!set) return out;
 
-    // On a layer that does not sustain, every note is its own block. Merging
-    // two kicks into one long one would draw a sustain that cannot be played
-    // and cannot be heard.
-    if (!layerById(layerId)?.sustains) {
-      for (const { slot, lane } of this.notes(layerId)) out.push({ lane, start: slot, length: GRID });
+    if (!roundById(roundId)?.sustains) {
+      for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: GRID });
       return out;
     }
 
-    for (let lane = 0; lane < 4; lane++) {
+    for (let lane = 0; lane < LANES; lane++) {
       let start = null;
       let last = null;
       for (let slot = 0; slot < this.loopSteps; slot += GRID) {
-        if (set.has(slot * 4 + lane)) {
+        if (set.has(slot * LANES + lane)) {
           if (start === null) start = slot;
           last = slot;
         } else if (start !== null) {
@@ -172,58 +160,62 @@ export class Track {
   }
 
   /**
-   * Does a held block BEGIN on this slot?
-   *
-   * The scheduler fires a voice only where this is true, so a run sounds once
-   * and then rings for its length rather than retriggering on every step it
-   * covers. A held 808 is one long note, which is what an 808 does; a held kick
-   * is one kick, which is what a kick does.
+   * Does a held block BEGIN here? The scheduler fires only where this is true,
+   * so a run sounds once and rings rather than retriggering on every step.
    */
-  isRunStart(layerId, lane, slot) {
-    const set = this.events[layerId];
-    if (!set || !set.has(slot * 4 + lane)) return false;
+  isRunStart(roundId, lane, slot) {
+    const set = this.events[roundId];
+    if (!set || !set.has(slot * LANES + lane)) return false;
+    if (!roundById(roundId)?.sustains) return true;
 
-    // Every hit on a non-sustaining layer sounds. Two kicks in a row are two
-    // kicks, and always were.
-    if (!layerById(layerId)?.sustains) return true;
-
-    // A lane filled the whole way round has no gap to start after, so give it
-    // one — otherwise it would be occupied everywhere and sound nowhere.
+    // A lane held the whole way round has no gap to start after, so give it one
+    // — otherwise it is occupied everywhere and sounds nowhere.
     const filled = this.loopSteps / GRID;
     let n = 0;
-    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * 4 + lane)) n++;
+    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * LANES + lane)) n++;
     if (n === filled) return slot === 0;
 
     const prev = ((slot - GRID) % this.loopSteps + this.loopSteps) % this.loopSteps;
-    return !set.has(prev * 4 + lane);
+    return !set.has(prev * LANES + lane);
   }
 
-  count(layerId) {
-    return this.events[layerId]?.size ?? 0;
+  count(roundId) {
+    return this.events[roundId]?.size ?? 0;
+  }
+
+  clear(roundId) {
+    this.events[roundId]?.clear();
+    this.accepted.delete(roundId);
+  }
+
+  accept(roundId) {
+    if (this.count(roundId) > 0) this.accepted.add(roundId);
   }
 
   isEmpty() {
-    return LAYERS.every((l) => this.count(l.id) === 0);
+    return ROUNDS.every((r) => this.count(r.id) === 0);
   }
 
-  clear(layerId) {
-    this.events[layerId]?.clear();
-  }
-
-  /** Plain snapshot — this is exactly what the link codec serialises. */
+  /** Plain snapshot — exactly what the link codec serialises. */
   toJSON() {
     return {
       bars: this.bars,
-      events: Object.fromEntries(Object.entries(this.events).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])),
+      bpm: this.bpm,
+      events: Object.fromEntries(
+        Object.entries(this.events).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])
+      ),
+      accepted: [...this.accepted],
       shaping: this.shaping,
     };
   }
 
   static fromJSON(data) {
-    const t = new Track({ bars: data?.bars ?? 4 });
+    const t = new Track({ bars: data?.bars ?? 2 });
+    t.bpm = data?.bpm ?? 100;
     for (const [id, list] of Object.entries(data?.events ?? {})) {
       if (t.events[id]) for (const v of list) t.events[id].add(v);
     }
+    for (const id of data?.accepted ?? []) t.accepted.add(id);
     Object.assign(t.shaping, data?.shaping ?? {});
     return t;
   }

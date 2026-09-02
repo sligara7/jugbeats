@@ -355,6 +355,77 @@ export function renderLead(sr, hz, s, { seconds } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// The click, and the floor. Neither is an instrument she plays — they are what
+// make playing into an empty loop possible at all.
+// ---------------------------------------------------------------------------
+
+/**
+ * The click (dec:she-sets-the-tempo).
+ *
+ * A short pitched blip rather than filtered noise, because a click has to be
+ * unmistakable underneath drums without being loud — pitch cuts through where
+ * level would just add to the noise. The accent marks beat one, which is the
+ * whole job of a count-in: not "here is the tempo" but "here is where ONE is".
+ */
+export function renderClick(sr, { accent = false } = {}) {
+  const dur = 0.035;
+  const hz = accent ? 1600 : 1050;
+  const out = alloc(sr, dur);
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sr;
+    phase += (2 * Math.PI * hz) / sr;
+    out[i] = Math.sin(phase) * decayAt(t, dur, 9);
+  }
+  return normalize(fadeOut(out, sr, 3), accent ? 0.5 : 0.34);
+}
+
+/**
+ * The drone (dec:drone-voiced-up).
+ *
+ * An open fifth — root and fifth, no third — so it agrees with anything she
+ * plays later. A third would commit to major or minor and start arguing with
+ * her melody.
+ *
+ * VOICED UP TWO OCTAVES from where a drone musically belongs. At the C2 root a
+ * phone speaker reproduces essentially nothing while the drone still eats
+ * headroom and muddies the 808, which is the one voice that genuinely lives
+ * down there. Up here it is audible on the speaker she actually has.
+ *
+ * Rendered to loop seamlessly: the filter movement completes a whole number of
+ * cycles across the buffer, so the end meets the beginning exactly.
+ */
+export function renderPad(sr, { rootHz = ROOT_HZ, seconds = 4, octaves = 2 } = {}) {
+  const out = alloc(sr, seconds);
+  const root = rootHz * Math.pow(2, octaves);
+  const fifth = root * 1.5;
+  // Three voices per note, slightly detuned. The beating between them is what
+  // makes a pad sound wide and alive rather than like a held organ note.
+  const partials = [
+    { hz: root, gain: 1.0 }, { hz: root * 1.004, gain: 0.7 }, { hz: root * 0.997, gain: 0.7 },
+    { hz: fifth, gain: 0.55 }, { hz: fifth * 1.003, gain: 0.4 },
+    { hz: root * 0.5, gain: 0.35 }, // a touch of the lower octave for body
+  ];
+  const phases = new Float64Array(partials.length);
+  const filt = svf();
+  const LFO_CYCLES = 2; // integer cycles across the buffer, so the loop is seamless
+
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sr;
+    let x = 0;
+    for (let k = 0; k < partials.length; k++) {
+      phases[k] += (2 * Math.PI * partials[k].hz) / sr;
+      // Saw, for harmonics a small speaker can actually reproduce.
+      x += (2 * ((phases[k] / (2 * Math.PI)) % 1) - 1) * partials[k].gain;
+    }
+    x /= partials.length;
+    const lfo = 0.5 + 0.5 * Math.sin((2 * Math.PI * LFO_CYCLES * t) / seconds);
+    out[i] = svfStep(filt, x, 700 + 900 * lfo, 0.8, sr).lp;
+  }
+  return normalize(hpf(out, 120, sr), 0.5);
+}
+
+// ---------------------------------------------------------------------------
 // Pitch. The lanes are locked to a minor scale (dec:minor-scale-lanes), so the
 // engine takes a scale degree and owns the mapping. Nothing outside this file
 // ever handles a frequency, which is what makes "she cannot play a wrong note"

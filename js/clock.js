@@ -56,6 +56,20 @@ export class Clock {
     return 60 / this.bpm / 4;
   }
 
+  /**
+   * Set the tempo. Only legal while stopped.
+   *
+   * Deliberately refuses while running: every scheduled time and every block on
+   * screen is derived from this, so changing it mid-loop would move notes that
+   * have already sounded and shear the highway. She sets her tempo before she
+   * starts, which is also how a loop pedal works.
+   */
+  setTempo(bpm) {
+    if (this.running) return false;
+    this.bpm = bpm;
+    return true;
+  }
+
   get running() {
     return this._startedAt !== null;
   }

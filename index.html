@@ -8,8 +8,7 @@
 <title>JugBeats — make a phonk beat</title>
 
 <!-- The chat preview (cap:link-preview-card). WhatsApp needs ABSOLUTE urls and
-     caches them hard, so these have to be right BEFORE the link is shared
-     anywhere — a preview fixed afterwards may never be re-fetched. -->
+     caches them hard, so these have to be right BEFORE the link is shared. -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="JugBeats">
 <meta property="og:description" content="Turn your phone sideways, tap the blocks, make a phonk beat. Then send it back.">
@@ -27,17 +26,29 @@
 
 <canvas id="stage"></canvas>
 
+<!-- Top left: what she is playing right now, and at what speed. -->
+<div class="status">
+  <div id="round" class="round"></div>
+  <div id="bpm" class="bpm"></div>
+</div>
+
+<!-- Top right: the rounds she has done, and sending it on. -->
 <div class="strip">
-  <div id="layers" class="layers" aria-label="your layers"></div>
-  <button id="clear" class="clear" aria-label="clear this layer">clear</button>
+  <div id="rounds" class="rounds" aria-label="your rounds"></div>
   <button id="share" class="share" aria-label="send your beat">send ▸</button>
 </div>
 
 <div id="nudge" class="nudge" role="status" aria-live="polite"></div>
 
+<!-- The transport, straight down the middle — the one place on a landscape
+     phone where neither thumb rests (dec:two-thumbs-loop-pedal). -->
+<div class="transport">
+  <button id="transport" class="go">TAP 0/4</button>
+  <button id="reset" class="reset" hidden>↺</button>
+</div>
+
 <!-- The first-tap gate. Audio cannot start outside a gesture on iOS, so this
-     screen is not decoration — it is the only place the sound can be started
-     from (dec:beat-the-silent-switch). -->
+     screen is not decoration — it is the only place sound can be started. -->
 <div id="gate" class="gate">
   <div class="gate-inner">
     <h1 id="gate-title">JugBeats</h1>
@@ -46,7 +57,6 @@
   </div>
 </div>
 
-<!-- Shown only in portrait. iOS Safari will not let us rotate for her. -->
 <div class="rotate">
   <div>
     <div class="rotate-icon">▭</div>

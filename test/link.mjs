@@ -4,9 +4,9 @@
 //
 // The second half is the one that matters. A link she sent months ago is
 // sitting in someone's chat, and nothing else in the design would notice if it
-// stopped working (iface:track-format is the one PUBLISHED boundary here).
+// stopped working. iface:track-format is the one PUBLISHED boundary here.
 
-import { Track, LAYERS } from '../js/track.js';
+import { Track, ROUNDS, LANES } from '../js/track.js';
 
 // The codec is browser code and reaches for btoa/atob. Supply them rather than
 // changing the shipping code to suit a test.
@@ -23,9 +23,9 @@ const check = (name, ok, detail = '') => {
 };
 
 const sameNotes = (a, b) =>
-  LAYERS.every((l) => {
-    const x = [...a.events[l.id]].sort((p, q) => p - q).join(',');
-    const y = [...b.events[l.id]].sort((p, q) => p - q).join(',');
+  ROUNDS.every((r) => {
+    const x = [...a.events[r.id]].sort((p, q) => p - q).join(',');
+    const y = [...b.events[r.id]].sort((p, q) => p - q).join(',');
     return x === y;
   });
 
@@ -34,41 +34,42 @@ const sameNotes = (a, b) =>
 console.log('\nround trip');
 
 {
-  const t = new Track({ bars: 4 }); // explicit: not the default
-  t.record('drums', 0, 0);
-  t.record('drums', 1, 8);
-  t.record('drums', 2, 4);
-  t.record('drums', 2, 12);
-  t.record('bass', 0, 0);
-  t.record('bass', 3, 22);
-  t.record('lead', 1, 40);
+  const t = new Track({ bars: 2 });
+  t.bpm = 112;
+  t.record('r1', 0, 0); t.record('r1', 1, 8);
+  t.record('r2', 0, 4); t.record('r2', 0, 12);
+  t.record('r3', 0, 0); t.record('r3', 1, 20);
+  t.record('r4', 1, 16);
+  t.accept('r1'); t.accept('r2');
   t.shaping.bass = { deeper: 0.25, punchier: 1, dirtier: 0, longer: 0.5 };
 
   const back = decode(encode(t));
   check('a track survives encode and decode', back !== null && sameNotes(t, back));
-  check('the bar count survives', back?.bars === 4);
-  check('note count is identical', back && back.count('drums') === t.count('drums'));
+  check('the bar count survives', back?.bars === 2);
 
-  // A byte per control: 1/255 is the worst possible rounding error.
+  // Her tempo is part of the track now: she tapped it, so it is as much hers as
+  // the notes are, and a shared beat has to arrive at the speed she made it.
+  check('her tempo survives', back?.bpm === 112, `${back?.bpm} bpm`);
+
+  check('which rounds she kept survives',
+    back.accepted.has('r1') && back.accepted.has('r2') && !back.accepted.has('r3'));
+
   const near = (a, b) => Math.abs(a - b) < 0.005;
-  check('shaping numbers survive',
-    near(back.shaping.bass.deeper, 0.25) &&
-    near(back.shaping.bass.punchier, 1) &&
-    near(back.shaping.bass.dirtier, 0),
-    `deeper ${back.shaping.bass.deeper.toFixed(3)}`);
-
-  // Zero must come back as zero, not as neutral. It is a real value — "turned
-  // all the way down" — and the encoder has a separate path for "unset".
+  check('shaping numbers survive', near(back.shaping.bass.deeper, 0.25));
   check('a control turned fully down stays fully down', near(back.shaping.bass.dirtier, 0));
 }
 
 console.log('\nthe link is short enough to paste into a chat');
 
 {
-  const full = new Track({ bars: 4 });
-  for (const l of LAYERS) for (let s = 0; s < full.loopSteps; s++) for (let n = 0; n < 4; n++) full.record(l.id, n, s);
-  const sparse = new Track({ bars: 4 });
-  sparse.record('drums', 0, 0);
+  const full = new Track({ bars: 2 });
+  for (const r of ROUNDS) {
+    for (let s = 0; s < full.loopSteps; s += 2) {
+      for (let n = 0; n < LANES; n++) full.record(r.id, n, s);
+    }
+  }
+  const sparse = new Track({ bars: 2 });
+  sparse.record('r1', 0, 0);
 
   const long = urlFor(full).length;
   const short = urlFor(sparse).length;
@@ -82,35 +83,58 @@ console.log('\na bad link opens the game empty, never an error');
 {
   check('empty string', decode('') === null);
   check('nonsense', decode('!!!not-base64!!!') === null);
-  check('truncated', decode(encode(new Track()).slice(0, 6)) === null || true);
-  // A link from a FUTURE build must degrade to "make your own", not to a crash.
-  const future = encode(new Track()).split('');
-  const bytes = Buffer.from(future.join('').replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+
+  // A link from a FUTURE build must degrade to "make your own", not crash.
+  const bytes = Buffer.from(
+    encode(new Track()).replace(/-/g, '+').replace(/_/g, '/'), 'base64'
+  );
   bytes[0] = 99;
-  const fromFuture = bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fromFuture = bytes.toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   check('an unknown future version', decode(fromFuture) === null);
 }
 
 console.log('\nevery version we have ever shipped still decodes');
 
 {
-  // Frozen v1 examples. NOTHING MAY EVER BE REMOVED FROM THIS LIST — each entry
-  // is a link that exists in the world. When the format changes, add the new
-  // version here and leave these exactly as they are.
+  // FROZEN. This string was produced by the v1 encoder as it actually shipped,
+  // and is hardcoded rather than regenerated ON PURPOSE — a corpus the current
+  // code can rebuild tests nothing, because it would follow the code wherever
+  // the code went. Links in this exact format are in real chats.
+  //
+  // NOTHING MAY EVER BE REMOVED FROM THIS LIST.
   const CORPUS = [
-    { version: 1, note: 'kick on 1, snare on 3, one 808',
-      encoded: encode((() => {
-        const t = new Track({ bars: 4 }); // explicit: not the default
-        t.record('drums', 0, 0);
-        t.record('drums', 1, 8);
-        t.record('bass', 0, 0);
-        return t;
-      })()) },
+    {
+      version: 1,
+      note: 'four-bar beat with 808 and melody, from the four-lane era',
+      encoded:
+        'AQQFAAQABgAMAAUABAAGAAQABQAEAAYADAAFAAQABgAEAAEAAAAAAAAAAAABAAAAAAABAAAA' +
+        'AgAAAAAAAAAAAAAAAAAAAAAAAAABAAAACAAAAAAAAAAAAAAAAQAAAAAAAABAgICAgICAgA',
+    },
   ];
 
   for (const c of CORPUS) {
     const t = decode(c.encoded);
-    check(`v${c.version}: ${c.note}`, t !== null && !t.isEmpty());
+    check(`v${c.version} still decodes: ${c.note}`, t !== null && !t.isEmpty());
+    if (!t) continue;
+
+    // The game's shape changed underneath v1, so decoding is a MIGRATION: the
+    // four old drum lanes split across the first two rounds.
+    check('  kick and snare land in round one', t.count('r1') > 0, `${t.count('r1')} notes`);
+    check('  hats and cowbell land in round two', t.count('r2') > 0, `${t.count('r2')} notes`);
+    check('  the 808 lands in round three', t.count('r3') > 0, `${t.count('r3')} notes`);
+    check('  the melody lands in round four', t.count('r4') > 0, `${t.count('r4')} notes`);
+
+    // v1 tracks were four bars. Keeping that rather than forcing today's two is
+    // the difference between replaying her music and cropping it in half.
+    check('  its original length is kept, not cropped', t.bars === 4, `${t.bars} bars`);
+
+    // v1 knew nothing about accepting a round: a shared track arrived finished.
+    check('  everything in it counts as finished',
+      ROUNDS.every((r) => t.count(r.id) === 0 || t.accepted.has(r.id)));
+
+    check('  it plays at a sensible tempo though v1 stored none',
+      t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
   }
 }
 

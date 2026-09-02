@@ -11,7 +11,7 @@
 // actually breaks schedulers in the wild: a wake-up that arrives late.
 
 import { Clock, STEPS_PER_BAR } from '../js/clock.js';
-import { Track, quantise, GRID } from '../js/track.js';
+import { Track, quantise, GRID, ROUNDS } from '../js/track.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -150,8 +150,8 @@ console.log('\nnothing she records can be too fast to play');
   const t = new Track({ bars: 4 });
   const stepMs = (60 / 138 / 4) * 1000;
 
-  for (let i = 0; i < 200; i++) t.record('drums', 0, i * 0.37); // ragged taps
-  const slots = t.notes('drums').map((n) => n.slot).sort((a, b) => a - b);
+  for (let i = 0; i < 200; i++) t.record('r1', 0, i * 0.37); // ragged taps
+  const slots = t.notes('r1').map((n) => n.slot).sort((a, b) => a - b);
   const closest = slots.slice(1).reduce((m, s, i) => Math.min(m, s - slots[i]), Infinity);
 
   check('no two notes in a lane land closer than an eighth', closest >= 2,
@@ -168,11 +168,11 @@ console.log('\nnotes you can hold become one block; drums never do');
   // things to hit. On a layer with sustain they are one block, pressed once and
   // held. On drums they are not — you do not hold a drum.
   const t = new Track({ bars: 4 });
-  for (const s of [0, 2, 4, 6]) t.record('bass', 0, s);   // a held 808 note
-  t.record('bass', 0, 12);                                 // and a separate one
-  t.record('bass', 1, 4);                                  // another lane
+  for (const s of [0, 2, 4, 6]) t.record('r3', 0, s);   // a held 808 note
+  t.record('r3', 0, 12);                                 // and a separate one
+  t.record('r3', 1, 4);                                  // another lane
 
-  const runs = t.runs('bass');
+  const runs = t.runs('r3');
   const lane0 = runs.filter((r) => r.lane === 0).sort((a, b) => a.start - b.start);
 
   check('four in a row are one block, not four', lane0.length === 2, `${lane0.length} block(s)`);
@@ -182,25 +182,25 @@ console.log('\nnotes you can hold become one block; drums never do');
   check('a different lane is its own block', runs.some((r) => r.lane === 1 && r.length === 2));
 
   check('a held block sounds only where it begins',
-    t.isRunStart('bass', 0, 0) &&
-    !t.isRunStart('bass', 0, 2) &&
-    !t.isRunStart('bass', 0, 6) &&
-    t.isRunStart('bass', 0, 12));
+    t.isRunStart('r3', 0, 0) &&
+    !t.isRunStart('r3', 0, 2) &&
+    !t.isRunStart('r3', 0, 6) &&
+    t.isRunStart('r3', 0, 12));
 
   // Drums: a kick is a struck object with a length of its own.
   const d = new Track({ bars: 4 });
-  for (const s of [0, 2, 4, 6]) d.record('drums', 0, s);
-  const kicks = d.runs('drums').filter((r) => r.lane === 0);
+  for (const s of [0, 2, 4, 6]) d.record('r1', 0, s);
+  const kicks = d.runs('r1').filter((r) => r.lane === 0);
   check('four kicks in a row stay four kicks', kicks.length === 4, `${kicks.length} block(s)`);
   check('no drum block is ever longer than one step', kicks.every((r) => r.length === 2));
-  check('every kick sounds', [0, 2, 4, 6].every((s) => d.isRunStart('drums', 0, s)));
+  check('every kick sounds', [0, 2, 4, 6].every((s) => d.isRunStart('r1', 0, s)));
 
   // A sustaining lane filled the whole way round has no gap to start after.
   // Without a special case it would be occupied everywhere and sound nowhere.
   const full = new Track({ bars: 4 });
-  for (let s = 0; s < full.loopSteps; s += 2) full.record('bass', 2, s);
+  for (let s = 0; s < full.loopSteps; s += 2) full.record('r3', 2, s);
   const starts = [];
-  for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('bass', 2, s)) starts.push(s);
+  for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('r3', 2, s)) starts.push(s);
   check('a lane held all the way round still sounds, once', starts.length === 1 && starts[0] === 0,
     `${starts.length} start(s)`);
 }
@@ -219,7 +219,7 @@ console.log('\na tap sounds once, never twice');
 
   for (let i = 0; i < 4000; i++) {
     const at = (i * 0.017) % (t.loopSteps * 2);
-    const slotFromTrack = t.record('drums', 0, at);
+    const slotFromTrack = t.record('r1', 0, at);
     const slotFromGuard = ((quantise(at) % t.loopSteps) + t.loopSteps) % t.loopSteps;
     if (slotFromTrack !== slotFromGuard) disagreements++;
   }
@@ -246,16 +246,16 @@ console.log('\nquantising is symmetric');
   const track = new Track({ bars: 4 });
   // Slightly early and slightly late must land on the same step. Quantising
   // late-only would teach her to rush.
-  check('a hair early lands on the beat', track.record('drums', 0, 7.6) === 8);
-  check('a hair late lands on the same beat', track.record('drums', 1, 8.4) === 8);
-  check('it wraps around the loop', track.record('drums', 2, 64.2) === 0);
+  check('a hair early lands on the beat', track.record('r1', 0, 7.6) === 8);
+  check('a hair late lands on the same beat', track.record('r1', 1, 8.4) === 8);
+  check('it wraps around the loop', track.record('r1', 2, 64.2) === 0);
   check('the same slot twice is one note', (() => {
     const t = new Track();
-    t.record('drums', 0, 4); t.record('drums', 0, 4.1);
-    return t.count('drums') === 1;
+    t.record('r1', 0, 4); t.record('r1', 0, 4.1);
+    return t.count('r1') === 1;
   })());
   check('erasing outside the loop is refused, not clamped', (() => {
-    try { new Track().erase('drums', 0, 999); return false; } catch { return true; }
+    try { new Track().erase('r1', 0, 999); return false; } catch { return true; }
   })());
 }
 

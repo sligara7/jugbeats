@@ -12,19 +12,26 @@ fall down the screen.
 
 ## How you play
 
-Tap a key. The sound fires straight away and your tap is kept, so four bars
-later it comes back round as a falling block. There is no record button,
-because there is no moment where you are not doing both.
+It is a loop pedal. Two keys, one per thumb.
 
-Four keys, grouped two under each thumb — the middle of a landscape phone is
-where thumbs are not.
+**Tap out your speed** — four taps on the keys and that is your tempo. Nobody
+tells you a number; you choose a speed you can hear.
 
-Once you have a beat going, the same four keys become the 808 and you play
-bass over your own drums. Then the melody. Everything you made keeps playing
-underneath. That is the whole of the teaching: nobody tells you a track is
-drums plus bass plus melody, you hear it get fuller because you filled it.
+**Press START.** A click counts you in over a quiet drone, so you are never
+playing into silence. Then play a kick and a snare for as long as you like.
 
-The melody lanes are locked to a minor scale, so there is no wrong note.
+**Press STOP to keep it, or ↺ to throw it away and go again.** What you keep
+starts looping, and the click retires — from here your own beat is the click.
+
+**Then the next two sounds over the top.** Hats and cowbell, then the 808, then
+the melody. Two at a time, one per thumb, each round playing over everything
+you kept before it.
+
+That is the whole of the teaching: nobody tells you a track is drums plus bass
+plus melody. You hear it get fuller because you filled it.
+
+The pitched lanes are locked to a minor scale, and the drone sounds its root —
+so there is no wrong note, and you can hear why.
 
 ## How it is built
 
@@ -38,7 +45,7 @@ no server, no accounts, nothing to pay for.
 | `js/voices.js` | The sound engine. |
 | `js/track.js` | Your music, as plain data. |
 | `js/stage.js` | The highway and the keys. |
-| `js/coach.js` | Decides what to put in front of you next. |
+| `js/session.js` | The loop pedal: rounds, tempo, start and stop. |
 | `js/link.js` | Packs a track into a URL and back out. |
 | `js/main.js` | The page. Constructs everything; nothing depends on it. |
 | `forge/` | Build-time only. Bakes the drums; renders the preview card. |
@@ -66,11 +73,12 @@ python3 forge/preview.py      # render the chat preview card
 
 node test/timing.mjs          # the beat does not drift
 node test/link.mjs            # old links still play
+node test/session.mjs         # the loop pedal behaves like a loop pedal
 
 python3 -m http.server 8137   # then open http://localhost:8137
 ```
 
-On a desktop the four lanes are **D F J K**.
+On a desktop the two lanes are **F** and **J**.
 
 The files in `kit/` are generated but committed, because GitHub Pages serves
 the repository as-is with no build step. `js/dsp.js` is the source of truth;
@@ -91,3 +99,8 @@ Two things worth knowing, because they explain most of the code:
 - **The keys never reach back.** Every part publishes what it offers and imports
   only from parts below it. `main.js` constructs everything and nothing depends
   on it. Two dependency cycles got caught this way before a line of code existed.
+
+**It runs anywhere.** Android and iOS, any modern browser. The only
+platform-specific code is additive and guarded: an iOS audio-session request
+that is simply absent on Android, and a silent-audio fallback that is harmless
+everywhere. Nothing is gated on a platform.
