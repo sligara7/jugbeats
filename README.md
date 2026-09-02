@@ -44,6 +44,12 @@ already works.
 That is the whole of the teaching: nobody tells you a track is drums plus bass
 plus melody. You hear it get fuller because you filled it.
 
+**Any round can go to 1/16 notes** — tap the note-length chip. Eighths are the
+default because they are forgiving: every tap snaps to the nearest grid point,
+so a finer grid records your timing rather than tidying it. Sixteenths are there
+for snare and hat rolls, and they come out *shuffled* rather than even, because
+swing leans the "and" of the beat. That is the feel, not a fault.
+
 **Hold a bass or melody key and the note holds with it.** Let go and it stops.
 Drums do not work that way, because a drum is a struck object with a length of
 its own.

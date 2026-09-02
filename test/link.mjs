@@ -129,6 +129,16 @@ console.log('\nevery version we have ever shipped still decodes');
         'AQIBAAEAAQABAgEAAQABAQEAAAAAAAgAAAAAAAAAAQAAAAAAAAAIAAAAAAAAAAAAAAACAAAA' +
         'AAAAAAgAAAAAAAAAAgAAAAAAAAAAAAAAD4CAgICAgICA',
     },
+    {
+      version: 4,
+      note: 'four-bar track at 116bpm with a three-bar 808, before per-round grids',
+      bars: 4,
+      bpm: 116,
+      encoded:
+        'BAR0AAQEAwQBAAAAAgABAAEAAAACAAEAAQAAAAIAAQABAAAAAgABAAEAAQIBAAEAAQABAgEA' +
+        'AQABAAECAQABAAEAAQIBAAEAAQEBAQAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AgAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAA-AgICAgICAgA',
+    },
   ];
 
   for (const c of CORPUS) {
@@ -152,10 +162,20 @@ console.log('\nevery version we have ever shipped still decodes');
     check('  it plays at a sensible tempo', t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
     if (c.bpm) check('  at exactly the tempo it was made at', t.bpm === c.bpm);
 
-    // Every version before v4 had one loop length for the whole track, so all
-    // its rounds must come back agreeing — a widening, not a guess.
-    check('  all its rounds get the one length it had',
-      ROUNDS.every((r) => t.barsFor(r.id) === c.bars));
+    // Nothing before v5 knew about grids, so every round must widen to eighths.
+    check('  every round comes back on the eighth grid',
+      ROUNDS.every((r) => t.gridFor(r.id) === 2),
+      ROUNDS.map((r) => t.gridFor(r.id)).join(','));
+
+    if (c.version < 4) {
+      // Before v4 one loop length covered the whole track.
+      check('  all its rounds get the one length it had',
+        ROUNDS.every((r) => t.barsFor(r.id) === c.bars));
+    } else {
+      check('  its per-round lengths survive',
+        t.barsFor('r3') === 3 && t.barsFor('r1') === 4,
+        ROUNDS.map((r) => t.barsFor(r.id)).join(','));
+    }
   }
 
   // v1 lost notes under v2, because the pitched rounds only had two lanes then
@@ -185,6 +205,29 @@ console.log('\nchords survive the round trip');
     back.lanesAt('r3', 0).length === 2, `${back.lanesAt('r3', 0).length} notes`);
   check('and they are the same two notes',
     back.lanesAt('r4', 8).join(',') === '0,2' && back.lanesAt('r3', 0).join(',') === '0,3');
+}
+
+console.log('\nper-round grids survive the round trip');
+
+{
+  // If the grid did not travel, a sixteenth-note snare run would come back
+  // quantised to eighths on someone else's phone — half her notes silently
+  // gone, and the beat she sent not the beat they hear.
+  const t = new Track();
+  t.setGrid('r1', 1);
+  t.record('r1', 1, 0);
+  t.record('r1', 1, 1);   // an off-sixteenth, only reachable on the fine grid
+  t.record('r1', 1, 2);
+  t.record('r1', 1, 3);
+  t.accept('r1');
+
+  check('the round is on sixteenths before sending', t.gridFor('r1') === 1);
+  check('and it recorded the in-between notes', t.count('r1') === 4, `${t.count('r1')}`);
+
+  const back = decode(encode(t));
+  check('the grid survives', back.gridFor('r1') === 1, `${back.gridFor('r1')}`);
+  check('and so do the off-sixteenths', back.count('r1') === 4, `${back.count('r1')}`);
+  check('other rounds stay on eighths', back.gridFor('r3') === 2);
 }
 
 console.log('\ndifferent loop lengths survive the round trip');

@@ -10,7 +10,7 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, ROUNDS, GRID, quantise, chordAt } from './track.js';
+import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt } from './track.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share } from './link.js';
@@ -104,9 +104,9 @@ function onHit(lane) {
   if (at === null) return;
   track.record(round.id, lane, at);
 
-  // The SAME quantiser the track uses. These were once two different roundings
-  // and where they disagreed a note sounded twice.
-  const absStep = quantise(at);
+  // The SAME quantiser the track uses, at the SAME grid. These were once two
+  // different roundings, and where they disagreed a note sounded twice.
+  const absStep = quantise(at, track.gridFor(round.id));
   if (clock.timeOf(absStep) > ctx.currentTime) {
     alreadySounded.add(`${round.id}:${lane}:${absStep}`);
   }
@@ -132,12 +132,13 @@ function extendHeld() {
   if (!holding.size || !session.recording || !session.round.sustains) return;
   const at = clock.now();
   if (at === null) return;
-  const reached = Math.floor(at / GRID) * GRID;
+  const grid = track.gridFor(session.round.id);
+  const reached = Math.floor(at / grid) * grid;
 
   for (const [lane, lastStep] of holding) {
     if (reached <= lastStep) continue;
     // Fill every step crossed, so a stall cannot leave a gap mid-note.
-    for (let s = lastStep + GRID; s <= reached; s += GRID) {
+    for (let s = lastStep + grid; s <= reached; s += grid) {
       track.record(session.round.id, lane, s);
       alreadySounded.add(`${session.round.id}:${lane}:${s}`);
     }
@@ -243,14 +244,18 @@ function refresh() {
   // lines up again. That second number is what turns drifting layers from a
   // fault into a pattern she can hear coming.
   const lenBtn = el('length');
+  const gridBtn = el('grid');
   const round = session.round;
-  lenBtn.hidden = !round || session.recording || session.state === 'counting';
-  if (!lenBtn.hidden) {
+  const busy = !round || session.recording || session.state === 'counting';
+  lenBtn.hidden = busy;
+  gridBtn.hidden = busy;
+  if (!busy) {
     const bars = track.barsFor(round.id);
     const composite = track.compositeBars;
     lenBtn.textContent = composite === bars
       ? `${bars} bars`
       : `${bars} bars · meets every ${composite}`;
+    gridBtn.textContent = track.gridFor(round.id) === FINE_GRID ? '1/16 notes' : '1/8 notes';
   }
 
   const undo = resetAction();
@@ -352,6 +357,27 @@ el('length').addEventListener('click', (e) => {
   flash(composite === next
     ? `${round.label.toLowerCase()}: ${next} bars`
     : `${round.label.toLowerCase()}: ${next} bars — everything meets every ${composite}`);
+  refresh();
+});
+
+/**
+ * Coarse or fine, for this round.
+ *
+ * Eighths are the forgiving grid and stay the default. Sixteenths are here for
+ * one reason: a sixteenth-note snare or hat run is a signature of the genre and
+ * is unreachable at eighths. The cost is that a tap snaps within about 54ms
+ * instead of 108, so her timing is recorded rather than tidied — which is why
+ * this is per round and off unless she asks.
+ */
+el('grid').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const round = session.round;
+  if (!round) return;
+  const fine = track.gridFor(round.id) !== FINE_GRID;
+  track.setGrid(round.id, fine ? FINE_GRID : GRID);
+  flash(fine
+    ? `${round.label.toLowerCase()}: 1/16 notes — twice as fine, half as forgiving`
+    : `${round.label.toLowerCase()}: back to 1/8 notes`);
   refresh();
 });
 

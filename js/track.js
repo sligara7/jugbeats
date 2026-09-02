@@ -53,14 +53,18 @@ export const laneCount = (roundId) => roundById(roundId)?.lanes.length ?? 0;
  */
 export const GRID = 2;
 
+/** The finest a round may go: sixteenths. One grid step, no subdivision left. */
+export const FINE_GRID = 1;
+
 /**
  * Snap a continuous playhead position to the grid she can land on.
  *
  * EXPORTED SO THERE IS EXACTLY ONE OF THESE. It was once done in two places
  * with two different roundings, and where they disagreed a note sounded twice.
+ * The grid is now per round, so it is passed in rather than assumed.
  */
-export function quantise(atStep) {
-  return Math.round(atStep / GRID) * GRID;
+export function quantise(atStep, grid = GRID) {
+  return Math.round(atStep / grid) * grid;
 }
 
 /**
@@ -160,6 +164,29 @@ export class Track {
      * listener hears as drift.
      */
     this.roundBars = Object.fromEntries(ROUNDS.map((r) => [r.id, bars]));
+
+    /**
+     * How fine a grid each round may land on (dec:idea-finer-notes-per-round).
+     *
+     * Eighths everywhere by default, because that is the forgiving one: every
+     * tap snaps to the nearest grid point, so halving the grid halves the
+     * tolerance — from about 108ms either side to about 54ms — and a finer grid
+     * records a nine-year-old's timing faithfully instead of tidying it away.
+     *
+     * Sixteenths are OPT-IN per round for exactly that reason, and the round
+     * that wants them is the drums: a sixteenth-note snare or hat run is a
+     * signature of the genre and is simply unreachable at eighths.
+     *
+     * SIXTEENTHS COME OUT SHUFFLED, NOT EVEN, and that is deliberate rather
+     * than overlooked. Swing leans the "and" of each beat, so at 100bpm a
+     * sixteenth run measures 150, 198, 102, 150ms — a long:short of 66:34,
+     * which is within a hair of a triplet shuffle. That is not a lurch, it is
+     * the shuffled-sixteenth feel hip-hop and phonk are built on. Straightening
+     * them would mean the clock answering two questions about when a step is,
+     * and it would take the swing off her kick as well, since kick and snare
+     * share a round.
+     */
+    this.roundGrid = Object.fromEntries(ROUNDS.map((r) => [r.id, GRID]));
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
@@ -184,6 +211,22 @@ export class Track {
     this.shaping = { bass: {}, lead: {} };
     /** The tempo she tapped. Part of the track: it is hers, not the game's. */
     this.bpm = 100;
+  }
+
+  /** The grid this round lands on, in sixteenths. 2 = eighths, 1 = sixteenths. */
+  gridFor(roundId) {
+    return this.roundGrid[roundId] ?? GRID;
+  }
+
+  /**
+   * Set a round's grid. Coarsening is NON-DESTRUCTIVE in the same way
+   * shortening is: notes on the in-between steps stay stored and simply stop
+   * being reported, so going back to sixteenths brings them all back.
+   */
+  setGrid(roundId, grid) {
+    if (!(roundId in this.roundGrid)) return false;
+    this.roundGrid[roundId] = grid === FINE_GRID ? FINE_GRID : GRID;
+    return true;
   }
 
   /** Bars in one round's loop. */
@@ -237,7 +280,7 @@ export class Track {
    */
   record(roundId, lane, atStep) {
     const loop = this.loopStepsFor(roundId);
-    const slot = ((quantise(atStep) % loop) + loop) % loop;
+    const slot = ((quantise(atStep, this.gridFor(roundId)) % loop) + loop) % loop;
     this.events[roundId]?.add(slot * LANE_STRIDE + lane);
     return slot;
   }
@@ -268,9 +311,12 @@ export class Track {
   notes(roundId) {
     const out = [];
     const loop = this.loopStepsFor(roundId);
+    const grid = this.gridFor(roundId);
     for (const v of this.events[roundId] ?? []) {
       const slot = Math.floor(v / LANE_STRIDE);
-      if (slot < loop) out.push({ slot, lane: v % LANE_STRIDE });
+      // A note on an in-between step is kept but not reported while the round
+      // is coarse, so coarsening never destroys anything.
+      if (slot < loop && slot % grid === 0) out.push({ slot, lane: v % LANE_STRIDE });
     }
     return out;
   }
@@ -288,24 +334,25 @@ export class Track {
     const out = [];
     if (!set) return out;
 
+    const grid = this.gridFor(roundId);
     if (!roundById(roundId)?.sustains) {
-      for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: GRID });
+      for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: grid });
       return out;
     }
 
     for (let lane = 0; lane < laneCount(roundId); lane++) {
       let start = null;
       let last = null;
-      for (let slot = 0; slot < this.loopStepsFor(roundId); slot += GRID) {
+      for (let slot = 0; slot < this.loopStepsFor(roundId); slot += grid) {
         if (set.has(slot * LANE_STRIDE + lane)) {
           if (start === null) start = slot;
           last = slot;
         } else if (start !== null) {
-          out.push({ lane, start, length: last - start + GRID });
+          out.push({ lane, start, length: last - start + grid });
           start = null;
         }
       }
-      if (start !== null) out.push({ lane, start, length: last - start + GRID });
+      if (start !== null) out.push({ lane, start, length: last - start + grid });
     }
     return out;
   }
@@ -317,17 +364,19 @@ export class Track {
   isRunStart(roundId, lane, slot) {
     const set = this.events[roundId];
     if (!set || !set.has(slot * LANE_STRIDE + lane)) return false;
+    const grid = this.gridFor(roundId);
+    if (slot % grid !== 0) return false; // not on this round's grid at all
     if (!roundById(roundId)?.sustains) return true;
 
     // A lane held the whole way round has no gap to start after, so give it one
     // — otherwise it is occupied everywhere and sounds nowhere.
     const loop = this.loopStepsFor(roundId);
-    const filled = loop / GRID;
+    const filled = loop / grid;
     let n = 0;
-    for (let s = 0; s < loop; s += GRID) if (set.has(s * LANE_STRIDE + lane)) n++;
+    for (let s = 0; s < loop; s += grid) if (set.has(s * LANE_STRIDE + lane)) n++;
     if (n === filled) return slot === 0;
 
-    const prev = ((slot - GRID) % loop + loop) % loop;
+    const prev = ((slot - grid) % loop + loop) % loop;
     return !set.has(prev * LANE_STRIDE + lane);
   }
 
@@ -342,11 +391,12 @@ export class Track {
    */
   runLengthAt(roundId, lane, slot) {
     if (!this.isRunStart(roundId, lane, slot)) return 0;
-    if (!roundById(roundId)?.sustains) return GRID;
+    const grid = this.gridFor(roundId);
+    if (!roundById(roundId)?.sustains) return grid;
     const set = this.events[roundId];
     const loop = this.loopStepsFor(roundId);
     let n = 0;
-    for (let s = slot; s < loop && set.has(s * LANE_STRIDE + lane); s += GRID) n += GRID;
+    for (let s = slot; s < loop && set.has(s * LANE_STRIDE + lane); s += grid) n += grid;
     return n;
   }
 
@@ -388,6 +438,7 @@ export class Track {
     return {
       bars: this.bars,
       roundBars: { ...this.roundBars },
+      roundGrid: { ...this.roundGrid },
       bpm: this.bpm,
       events: Object.fromEntries(
         Object.entries(this.events).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])
@@ -401,6 +452,7 @@ export class Track {
     const t = new Track({ bars: data?.bars ?? 4 });
     t.bpm = data?.bpm ?? 100;
     Object.assign(t.roundBars, data?.roundBars ?? {});
+    Object.assign(t.roundGrid, data?.roundGrid ?? {});
     for (const [id, list] of Object.entries(data?.events ?? {})) {
       if (t.events[id]) for (const v of list) t.events[id].add(v);
     }

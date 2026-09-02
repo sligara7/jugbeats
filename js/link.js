@@ -8,10 +8,10 @@
 // Governed by dec:track-in-the-url: the track travels inside the link, so there
 // is no server, no database and no account anywhere in this game.
 
-import { Track, ROUNDS, LANE_STRIDE, STEPS_PER_BAR } from './track.js';
+import { Track, ROUNDS, LANE_STRIDE, STEPS_PER_BAR, GRID } from './track.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
-const VERSION = 4;
+const VERSION = 5;
 
 const CONTROLS = ['deeper', 'punchier', 'dirtier', 'longer'];
 const SHAPED = ['bass', 'lead'];
@@ -35,28 +35,28 @@ function fromB64Url(str) {
 }
 
 // ---------------------------------------------------------------------------
-// v4 — every round carries its own loop length
+// v5 — every round also carries its own grid
 //
-// New in v4 over v3: each round stores how many bars it loops over, so a
-// three-bar bass can sit under a four-bar drum part and drift apart and back
-// together every twelve bars. Every round's bitfield is sized by the LONGEST
-// round, which wastes a little space on the short ones and buys one code path.
+// New in v5 over v4: each round records whether it lands on eighths or
+// sixteenths, so a sixteenth-note snare run travels with the track. One byte
+// per round, right after the bar counts.
 // ---------------------------------------------------------------------------
 
-function encodeV4(track) {
+function encodeV5(track) {
   const maxSteps = track.maxLoopSteps;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
   const out = new Uint8Array(
-    4 + ROUNDS.length + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
+    4 + ROUNDS.length * 2 + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
   );
 
   let p = 0;
   out[p++] = VERSION;
-  out[p++] = maxSteps / STEPS_PER_BAR; // the longest round, for sizing on the way back in
+  out[p++] = maxSteps / STEPS_PER_BAR;
   out[p++] = Math.max(0, Math.min(255, track.bpm));
   out[p++] = 0; // reserved
 
   for (const round of ROUNDS) out[p++] = track.barsFor(round.id);
+  for (const round of ROUNDS) out[p++] = track.gridFor(round.id);
 
   for (const round of ROUNDS) {
     for (const { slot, lane } of track.notes(round.id)) {
@@ -78,6 +78,55 @@ function encodeV4(track) {
   }
   return out;
 }
+
+function decodeV5(bytes) {
+  let p = 1;
+  const maxBars = bytes[p++] || 4;
+  const bpm = bytes[p++] || 100;
+  p++; // reserved
+
+  const track = new Track({ bars: maxBars });
+  track.bpm = bpm;
+  for (const round of ROUNDS) track.setBars(round.id, bytes[p++] || maxBars);
+  for (const round of ROUNDS) track.setGrid(round.id, bytes[p++] || GRID);
+
+  const maxSteps = maxBars * STEPS_PER_BAR;
+  const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
+
+  for (const round of ROUNDS) {
+    for (let bit = 0; bit < maxSteps * LANE_STRIDE; bit++) {
+      if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
+    }
+    p += bytesPerRound;
+  }
+
+  const acceptedBits = bytes[p++] ?? 0;
+  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+
+  for (const inst of SHAPED) {
+    track.shaping[inst] = {};
+    for (const c of CONTROLS) {
+      const b = bytes[p++];
+      if (b !== undefined) track.shaping[inst][c] = b / 255;
+    }
+  }
+  return track;
+}
+
+// ---------------------------------------------------------------------------
+// v4 — every round carries its own loop length, all of them on eighths
+//
+// KEPT FOREVER. Decoding is a widening: every round gets the eighth-note grid
+// the whole track used to share.
+//
+// New in v4 over v3: each round stores how many bars it loops over, so a
+// three-bar bass can sit under a four-bar drum part and drift apart and back
+// together every twelve bars. Every round's bitfield is sized by the LONGEST
+// round, which wastes a little space on the short ones and buys one code path.
+// ---------------------------------------------------------------------------
+
+// (no encodeV4 — only DECODERS are kept forever; a frozen v4 string in the
+// test corpus is what proves this decoder still works.)
 
 function decodeV4(bytes) {
   let p = 1;
@@ -277,14 +326,14 @@ function decodeV1(bytes) {
 }
 
 /** Every decoder we have ever shipped, keyed by version. Nothing leaves. */
-const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4 };
+const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5 };
 
 // ---------------------------------------------------------------------------
 // The boundary
 // ---------------------------------------------------------------------------
 
 export function encode(track) {
-  return toB64Url(encodeV4(track));
+  return toB64Url(encodeV5(track));
 }
 
 /**
@@ -339,4 +388,4 @@ export async function share(track, { title = 'Listen to my beat' } = {}) {
   }
 }
 
-export const _internal = { encodeV4, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
+export const _internal = { encodeV5, decodeV5, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };

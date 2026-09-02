@@ -279,6 +279,21 @@ console.log('\na tap sounds once, never twice');
   check('the guard and the track agree on every position', disagreements === 0,
     `${disagreements} of 4000 would have doubled`);
 
+  // And they must still agree when the round is on the FINE grid — the guard
+  // now has to ask which grid, and asking the wrong one is the same bug again.
+  const fine = new Track({ bars: 2 });
+  fine.setGrid('r1', 1);
+  let fineDisagree = 0;
+  for (let i = 0; i < 2000; i++) {
+    const at = (i * 0.019) % (fine.loopSteps * 2);
+    const fromTrack = fine.record('r1', 0, at);
+    const g = fine.gridFor('r1');
+    const fromGuard = ((quantise(at, g) % fine.loopSteps) + fine.loopSteps) % fine.loopSteps;
+    if (fromTrack !== fromGuard) fineDisagree++;
+  }
+  check('and they agree on a sixteenth-note round too', fineDisagree === 0,
+    `${fineDisagree} of 2000`);
+
   // The old rounding, kept as the thing that must stay broken-if-reintroduced.
   let oldWayDisagreements = 0;
   for (let i = 0; i < 4000; i++) {
@@ -338,6 +353,44 @@ console.log('\nshortening a round does not destroy what is past the end');
   check('lengthening brings them all back, exactly', t.count('r3') === 4, `${t.count('r3')}`);
   check('on the same beats they were on',
     t.notes('r3').map((n) => n.slot).sort((a, b) => a - b).join(',') === '0,16,32,48');
+}
+
+console.log('\na round can go to sixteenths without dragging the others with it');
+
+{
+  // dec:idea-finer-notes-per-round. A sixteenth-note snare run is a signature
+  // of the genre and unreachable at eighths. Eighths stay the default because
+  // they are the forgiving grid: halving it halves the snapping tolerance.
+  const t = new Track();
+  check('every round starts on eighths', ROUNDS.every((r) => t.gridFor(r.id) === 2));
+
+  t.setGrid('r1', 1);
+  check('the drums can go fine', t.gridFor('r1') === 1);
+  check('and nothing else moved', t.gridFor('r2') === 2 && t.gridFor('r3') === 2);
+
+  // The point of it: notes an eighth apart become notes a sixteenth apart.
+  t.record('r1', 1, 0);
+  t.record('r1', 1, 1);
+  t.record('r1', 1, 2);
+  t.record('r1', 1, 3);
+  const slots = t.notes('r1').map((n) => n.slot).sort((a, b) => a - b);
+  check('a sixteenth run records every step', slots.join(',') === '0,1,2,3', slots.join(','));
+
+  // Coarsening must not destroy them, the same way shortening does not.
+  t.setGrid('r1', 2);
+  check('back on eighths, only the on-grid ones are heard',
+    t.notes('r1').map((n) => n.slot).sort((a, b) => a - b).join(',') === '0,2',
+    t.notes('r1').map((n) => n.slot).join(','));
+  t.setGrid('r1', 1);
+  check('and going fine again brings them all back', t.count('r1') === 4, `${t.count('r1')}`);
+
+  // A note between the eighths must not be treated as the head of a run while
+  // the round is coarse — that would sound a note she cannot see.
+  t.setGrid('r1', 2);
+  check('an off-grid note is not a run start while coarse',
+    t.isRunStart('r1', 1, 1) === false);
+  t.setGrid('r1', 1);
+  check('and it is once the round is fine again', t.isRunStart('r1', 1, 1) === true);
 }
 
 console.log('\na held note sounds for as long as she held it');
