@@ -31,6 +31,10 @@
   <div id="round" class="round"></div>
   <div class="under">
     <span id="bpm" class="bpm"></span>
+    <!-- Up here, NOT near the keys. It lived at the bottom-left, which on a
+         landscape phone is inside the left key — so every reach for the kick
+         opened the help screen. -->
+    <button id="help" class="help">no sound?</button>
     <!-- How long THIS round loops for. Tapping cycles it. Lives up here rather
          than beside the keys because it is set once and then left alone, and
          the play area stays for playing. -->
@@ -46,25 +50,25 @@
 
 <div id="nudge" class="nudge" role="status" aria-live="polite"></div>
 
-<!-- Always reachable, because the gate's hint vanishes the moment she taps and
-     that is exactly when she finds out there is no sound. -->
-<button id="help" class="help">no sound?</button>
-
+<!-- Tapping the backdrop anywhere closes it. On a landscape phone this panel is
+     taller than the screen, and the body blocks touch scrolling so she cannot
+     reach anything below the fold — so the way out must not be at the bottom,
+     and must not be a single small target. -->
 <div id="silentpanel" class="panel" hidden>
   <div class="panel-inner">
+    <button id="closepanel" class="closepanel" aria-label="close">✕ back to the game</button>
     <h2>Can’t hear it?</h2>
     <ol>
-      <li><b>Press volume up</b> while the game is playing. On an iPhone the
-        volume buttons change the <i>ringer</i> until something is actually
-        making sound.</li>
-      <li><b>Turn off silent mode.</b> On newer iPhones there is no switch —
-        swipe down from the top-right for Control Centre and tap the bell, or
-        press the Action Button on the left edge.</li>
-      <li><b>Take it off a Focus mode</b> if one is on.</li>
-      <li>Then <button id="retry" class="retry">try the sound again</button></li>
+      <li><b>Press volume up</b> while the game is playing — on an iPhone the
+        volume buttons change the <i>ringer</i> until something is making sound.</li>
+      <li><b>Turn off silent mode:</b> swipe down from the top-right for Control
+        Centre and tap the bell, or press the Action Button on the left edge.</li>
+      <li><b>Turn off Focus</b> if one is on.</li>
     </ol>
+    <p class="panel-actions">
+      <button id="retry" class="retry">try the sound again</button>
+    </p>
     <p id="diag" class="diag"></p>
-    <button id="closepanel" class="closepanel">close</button>
   </div>
 </div>
 

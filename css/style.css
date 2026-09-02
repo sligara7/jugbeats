@@ -271,63 +271,86 @@ body.portrait .rotate { display: grid; }
   .gate.loaded .gate-label, .rotate-icon { animation: none; }
 }
 
-/* --- "no sound?" — the one thing that must always be reachable ------------ */
+/* --- "no sound?" and the panel behind it --------------------------------- */
 
+/* Sits with the status, top-left. It USED to sit bottom-left, which on a
+   landscape phone is inside the left key — so every reach for the kick opened
+   the help screen. A help button must never live in a thumb's play area. */
 .help {
-  position: fixed;
-  left: calc(12px + var(--safe-l));
-  bottom: calc(14px + var(--safe-b));
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(244, 238, 252, 0.6);
+  pointer-events: auto;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: rgba(244, 238, 252, 0.45);
   font: inherit;
-  font-size: 12px;
-  padding: 8px 12px;
+  font-size: 11px;
+  padding: 4px 9px;
   border-radius: 999px;
   cursor: pointer;
-  z-index: 6;
 }
 .help:active { background: rgba(255, 255, 255, 0.2); color: var(--ink); }
 
 .panel {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(6, 4, 10, 0.94);
+  background: rgba(6, 4, 10, 0.96);
   z-index: 40;
+  /* The body blocks touch scrolling, so the panel has to allow it back or a
+     phone in landscape cannot reach anything below the fold. */
+  touch-action: pan-y;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
-.panel-inner {
-  max-width: 34em;
-  padding: 22px 26px calc(22px + var(--safe-b));
-  font-size: 14px;
-  line-height: 1.55;
-}
-.panel h2 { margin: 0 0 10px; font-size: 20px; color: var(--hot); }
-.panel ol { margin: 0; padding-left: 1.2em; }
-.panel li { margin-bottom: 9px; }
-.panel i { opacity: 0.75; }
 
-.retry, .closepanel {
+/* Top-aligned, never centred. Centring a panel taller than the viewport pushes
+   its head off the top, where no amount of scrolling reaches it. */
+.panel-inner {
+  max-width: 40em;
+  margin: 0 auto;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 24px calc(24px + var(--safe-b));
+  font-size: 13px;
+  line-height: 1.5;
+}
+.panel h2 { margin: 10px 0 8px; font-size: 18px; color: var(--hot); }
+.panel ol { margin: 0; padding-left: 1.2em; }
+.panel li { margin-bottom: 7px; }
+.panel i { opacity: 0.75; }
+.panel-actions { margin: 14px 0 0; }
+
+/* The way out, FIRST and full width. It was a small button at the bottom of a
+   panel taller than the screen, on a page where scrolling is disabled — which
+   is how a nine-year-old got stuck on a help screen she never meant to open. */
+.closepanel {
+  appearance: none;
+  display: block;
+  width: 100%;
+  border: 1px solid var(--hot);
+  background: var(--hot);
+  color: #14060d;
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 13px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.retry {
   appearance: none;
   border: 1px solid var(--hot);
   background: transparent;
   color: var(--hot);
   font: inherit;
   font-size: 13px;
-  padding: 8px 14px;
+  padding: 9px 15px;
   border-radius: 999px;
   cursor: pointer;
 }
-.retry:active, .closepanel:active { background: var(--hot); color: #14060d; }
-.closepanel { margin-top: 16px; border-color: rgba(255,255,255,0.28); color: rgba(244,238,252,0.7); }
+.retry:active { background: var(--hot); color: #14060d; }
 
-/* Deliberately plain and small: it is for a grown-up trying to work out what
-   went wrong, not for her. */
+/* For a grown-up working out what went wrong, not for her. */
 .diag {
-  margin: 16px 0 0;
+  margin: 14px 0 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   opacity: 0.5;

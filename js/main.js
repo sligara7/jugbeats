@@ -471,9 +471,23 @@ el('help').addEventListener('click', (e) => {
   el('silentpanel').hidden = false;
 });
 
-el('closepanel').addEventListener('click', (e) => {
-  e.stopPropagation();
+function closePanel(e) {
+  e?.stopPropagation();
   el('silentpanel').hidden = true;
+}
+
+el('closepanel').addEventListener('click', closePanel);
+
+// Tapping the backdrop closes it too. She got stuck on this screen once, and a
+// help panel with exactly one way out is a trap — especially one she reached by
+// accident.
+el('silentpanel').addEventListener('click', (e) => {
+  if (e.target === el('silentpanel')) closePanel(e);
+});
+
+// And the hardware back gesture, which on a phone is the reflex.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !el('silentpanel').hidden) closePanel(e);
 });
 
 el('retry').addEventListener('click', async (e) => {
