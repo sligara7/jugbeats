@@ -161,6 +161,44 @@ console.log('\nnothing she records can be too fast to play');
   check('every note sits on the eighth grid', slots.every((s) => s % 2 === 0));
 }
 
+console.log('\nconsecutive notes become one held block');
+
+{
+  // The owner's second finding, from the screenshot: four notes in a row read as
+  // four things to hit. In the game she plays they would be one long block she
+  // presses once and holds.
+  const t = new Track({ bars: 4 });
+  for (const s of [0, 2, 4, 6]) t.record('drums', 0, s);   // a held note
+  t.record('drums', 0, 12);                                 // and a separate tap
+  t.record('drums', 1, 4);                                  // another lane
+
+  const runs = t.runs('drums');
+  const lane0 = runs.filter((r) => r.lane === 0).sort((a, b) => a.start - b.start);
+
+  check('four notes in a row are one block, not four', lane0.length === 2,
+    `${lane0.length} block(s)`);
+  check('the held block spans all four', lane0[0]?.start === 0 && lane0[0]?.length === 8,
+    `start ${lane0[0]?.start}, length ${lane0[0]?.length}`);
+  check('a lone tap stays one step long', lane0[1]?.length === 2);
+  check('a different lane is its own block', runs.some((r) => r.lane === 1 && r.length === 2));
+
+  // The sounding rule: once, at the head.
+  check('a held block sounds only where it begins',
+    t.isRunStart('drums', 0, 0) &&
+    !t.isRunStart('drums', 0, 2) &&
+    !t.isRunStart('drums', 0, 6) &&
+    t.isRunStart('drums', 0, 12));
+
+  // A lane filled the whole way round has no gap to start after. Without a
+  // special case it would be occupied everywhere and sound nowhere.
+  const full = new Track({ bars: 4 });
+  for (let s = 0; s < full.loopSteps; s += 2) full.record('drums', 2, s);
+  const starts = [];
+  for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('drums', 2, s)) starts.push(s);
+  check('a lane filled all the way round still sounds, once', starts.length === 1 && starts[0] === 0,
+    `${starts.length} start(s)`);
+}
+
 console.log('\nquantising is symmetric');
 
 {

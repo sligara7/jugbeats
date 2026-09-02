@@ -36,23 +36,26 @@ export class Stage {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {import('./clock.js').Clock} clock
-   * @param {{onHit: (lane:number)=>void}} opts
+   * @param {{onHit: (lane:number)=>void, onRelease: (lane:number)=>void}} opts
    *   onHit fires the instant a key goes down, before anything is drawn or
    *   recorded. The shell wires it straight to the sound.
+   *   onRelease fires when it comes up, which is what ends a held note.
    */
-  constructor(canvas, clock, { onHit }) {
+  constructor(canvas, clock, { onHit, onRelease }) {
     this.canvas = canvas;
     this.ctx2d = canvas.getContext('2d');
     this.clock = clock;
     this.onHit = onHit;
+    this.onRelease = onRelease;
 
     this.track = null;
     this.layerId = 'drums';
     this.audioLive = false;
 
     this._raf = null;
-    this._flash = [0, 0, 0, 0];     // audio time each lane was last struck
-    this._down = new Set();          // pointer ids / key names currently held
+    this._flash = [0, 0, 0, 0];     // when each lane was last struck
+    this._holding = [false, false, false, false];
+    this._byPointer = new Map();    // pointerId -> lane, so release finds its key
     this._w = 0;
     this._h = 0;
     this._dpr = 1;
@@ -133,11 +136,18 @@ export class Stage {
 
   _bindInput() {
     const press = (lane) => {
-      if (lane < 0 || lane > 3) return;
+      if (lane < 0 || lane > 3 || this._holding[lane]) return;
+      this._holding[lane] = true;
       // 1. Sound. Immediately, synchronously, first.
       this.onHit(lane);
       // 2. Then the flash, which is only a drawing hint.
       this._flash[lane] = performance.now();
+    };
+
+    const release = (lane) => {
+      if (lane < 0 || lane > 3 || !this._holding[lane]) return;
+      this._holding[lane] = false;
+      this.onRelease(lane);
     };
 
     const laneAt = (clientX, clientY) => {
@@ -160,14 +170,30 @@ export class Stage {
         e.preventDefault();
         const lane = laneAt(e.clientX, e.clientY);
         if (lane < 0) return;
-        this._down.add(e.pointerId);
+        this._byPointer.set(e.pointerId, lane);
+        // Keep receiving moves and the release even if her thumb slides off the
+        // key, which on a phone it constantly does.
+        this.canvas.setPointerCapture?.(e.pointerId);
         press(lane);
       },
       { passive: false }
     );
-    const up = (e) => this._down.delete(e.pointerId);
+
+    const up = (e) => {
+      const lane = this._byPointer.get(e.pointerId);
+      if (lane === undefined) return;
+      this._byPointer.delete(e.pointerId);
+      release(lane);
+    };
     this.canvas.addEventListener('pointerup', up);
     this.canvas.addEventListener('pointercancel', up);
+    // A held finger that never sends an up — a phone call arriving, the tab
+    // going away — must not leave a note held forever.
+    window.addEventListener('blur', () => {
+      for (const lane of this._byPointer.values()) release(lane);
+      this._byPointer.clear();
+      for (let i = 0; i < 4; i++) release(i);
+    });
 
     window.addEventListener('keydown', (e) => {
       if (e.repeat || e.metaKey || e.ctrlKey) return;
@@ -175,6 +201,10 @@ export class Stage {
       if (lane < 0) return;
       e.preventDefault();
       press(lane);
+    });
+    window.addEventListener('keyup', (e) => {
+      const lane = KEYS.indexOf(e.key.toLowerCase());
+      if (lane >= 0) release(lane);
     });
   }
 
@@ -198,7 +228,7 @@ export class Stage {
     const nowStep = this.clock.now();
     if (nowStep !== null && this.track) {
       this._drawBeatGrid(g, lanes, hitY, nowStep);
-      this._drawNotes(g, lanes, hitY, nowStep);
+      this._drawRuns(g, lanes, hitY, nowStep);
     }
 
     // The hit line. Brighter on the beat, so the pulse is visible even when
@@ -229,24 +259,44 @@ export class Stage {
     }
   }
 
-  _drawNotes(g, lanes, hitY, nowStep) {
+  /**
+   * Draw the layer as HELD BLOCKS rather than as individual notes.
+   *
+   * Consecutive notes in a lane are one block she presses and holds, the way the
+   * game she already plays does it. A block's height is its duration, which is
+   * the whole point: how long it is IS how long to hold it, with nothing to read
+   * or count.
+   */
+  _drawRuns(g, lanes, hitY, nowStep) {
     const loop = this.track.loopSteps;
-    const horizon = nowStep + (FALL_SECONDS / this.clock.stepSeconds);
-    const blockH = Math.max(14, hitY * 0.045);
+    const horizon = nowStep + FALL_SECONDS / this.clock.stepSeconds;
+    const minH = Math.max(14, hitY * 0.045);
 
-    for (const { slot, lane } of this.track.notes(this.layerId)) {
-      // The nearest repeat of this note that has not already passed the line.
-      let step = slot + Math.ceil((nowStep - 1 - slot) / loop) * loop;
+    for (const { lane, start, length } of this.track.runs(this.layerId)) {
+      // The nearest repeat of this block that has not fully passed the line.
+      let step = start + Math.ceil((nowStep - length - 1 - start) / loop) * loop;
       for (; step < horizon; step += loop) {
-        const y = this._yFor(step, hitY);
-        if (y === null || y < -blockH) continue;
+        const yEnd = this._yFor(step, hitY);            // its head, which lands first
+        const yStart = this._yFor(step + length, hitY); // its tail, further up
+        if (yEnd === null || yEnd < -minH) continue;
 
+        const h = Math.max(minH, yEnd - yStart);
+        const top = yEnd - h;
         const L = lanes[lane];
-        const past = y > hitY;
-        g.globalAlpha = past ? Math.max(0, 1 - (y - hitY) / 40) : 1;
+
+        g.globalAlpha = yEnd > hitY ? Math.max(0, 1 - (yEnd - hitY) / 40) : 1;
         g.fillStyle = LANE_COLOURS[lane];
-        roundRect(g, L.x + 4, y - blockH / 2, L.w - 8, blockH, 6);
+        roundRect(g, L.x + 4, top, L.w - 8, h, Math.min(10, h / 2));
         g.fill();
+
+        // A brighter cap on the leading edge of a long block, so it is obvious
+        // which end arrives first and where the press belongs.
+        if (h > minH * 1.6) {
+          g.fillStyle = '#ffffff';
+          g.globalAlpha *= 0.5;
+          roundRect(g, L.x + 4, yEnd - minH * 0.5, L.w - 8, minH * 0.5, 5);
+          g.fill();
+        }
         g.globalAlpha = 1;
       }
     }
@@ -269,7 +319,9 @@ export class Stage {
     for (let i = 0; i < 4; i++) {
       const k = keys[i];
       const since = now - this._flash[i];
-      const hot = Math.max(0, 1 - since / 180);
+      // Held keys stay lit for as long as she holds them, so the key and the
+      // block on screen are doing visibly the same thing.
+      const hot = this._holding[i] ? 1 : Math.max(0, 1 - since / 180);
 
       g.fillStyle = LANE_COLOURS[i];
       g.globalAlpha = 0.25 + 0.75 * hot;

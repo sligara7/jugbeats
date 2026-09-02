@@ -11,7 +11,7 @@
 
 import { Clock } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, LAYERS } from './track.js';
+import { Track, LAYERS, GRID } from './track.js';
 import { Stage } from './stage.js';
 import { Coach } from './coach.js';
 import { trackFromLocation, share } from './link.js';
@@ -41,7 +41,15 @@ if (incoming) coach.unlockAll();
  */
 const alreadySounded = new Set();
 
-const stage = new Stage(el('stage'), clock, { onHit });
+/**
+ * Lanes she is holding right now, mapped to the last absolute step recorded for
+ * each. Holding a key fills the steps it covers, and those adjacent steps are
+ * merged back into one long block by the track — so pressing and holding writes
+ * a held note, which is the same gesture as holding a piano key down.
+ */
+const holding = new Map();
+
+const stage = new Stage(el('stage'), clock, { onHit, onRelease });
 
 // ---------------------------------------------------------------------------
 // The hot path. Sound first, recording after — never the other way round.
@@ -73,13 +81,49 @@ function onHit(lane) {
     alreadySounded.add(`${layer.id}:${lane}:${absStep}`);
   }
 
+  holding.set(lane, absStep);
+
   // 3. And only then does the coach get to notice.
   coach.noteRecorded(layer.id);
   renderStrip();
   void slot;
 }
 
+function onRelease(lane) {
+  holding.delete(lane);
+}
+
+/**
+ * Extend every held lane into the step the playhead has now reached.
+ *
+ * Uses FLOOR rather than nearest, unlike the initial press: a press should snap
+ * to whichever grid step it is closest to, but a hold should only ever fill
+ * steps she has actually reached. Rounding here would write a note slightly
+ * ahead of her thumb.
+ */
+function extendHeld() {
+  if (!holding.size || !voices.ready) return;
+  const at = clock.now();
+  if (at === null) return;
+  const reached = Math.floor(at / GRID) * GRID;
+
+  for (const [lane, lastStep] of holding) {
+    if (reached <= lastStep) continue;
+    // Fill in every step crossed, so a stall cannot leave a gap in the middle
+    // of a held note.
+    for (let s = lastStep + GRID; s <= reached; s += GRID) {
+      track.record(coach.layer.id, lane, s);
+      alreadySounded.add(`${coach.layer.id}:${lane}:${s}`);
+    }
+    holding.set(lane, reached);
+  }
+}
+
 clock.onSchedule((from, to, timeOf) => {
+  // The tick is also the only heartbeat a held note needs — no second timer,
+  // because there is only ever one clock (dec:one-clock).
+  extendHeld();
+
   if (!voices.ready) return;
   const loop = track.loopSteps;
 
@@ -87,6 +131,11 @@ clock.onSchedule((from, to, timeOf) => {
     const slot = ((step % loop) + loop) % loop;
     for (const layer of LAYERS) {
       for (const lane of track.lanesAt(layer.id, slot)) {
+        // A held block sounds ONCE, where it begins, and then rings for its
+        // length. Firing on every step it covers would turn one long 808 note
+        // into a machine-gun of retriggers.
+        if (!track.isRunStart(layer.id, lane, slot)) continue;
+
         const key = `${layer.id}:${lane}:${step}`;
         if (alreadySounded.delete(key)) continue;
         const { voice, degree } = voiceFor(layer, lane);

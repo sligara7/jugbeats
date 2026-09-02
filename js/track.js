@@ -88,11 +88,72 @@ export class Track {
     return out;
   }
 
-  /** All notes in a layer as {slot, lane} — what the stage draws. */
+  /** All notes in a layer as {slot, lane}. Raw occupancy; prefer runs(). */
   notes(layerId) {
     const out = [];
     for (const v of this.events[layerId] ?? []) out.push({ slot: (v / 4) | 0, lane: v % 4 });
     return out;
+  }
+
+  /**
+   * The notes of a layer as HELD BLOCKS — consecutive slots in one lane merged
+   * into a single run of {lane, start, length}.
+   *
+   * This is the whole answer to a problem the owner found by playing it: four
+   * notes in a row read as four things to hit, and hitting four things in a row
+   * is not possible. In the game she already plays they would be ONE long block
+   * that you press once and hold, exactly like holding a piano key for the
+   * length of the note. Same data underneath — the stored slots and therefore
+   * the shared link do not change at all — but what she sees and what she has
+   * to do both get simpler.
+   *
+   * Runs deliberately do NOT wrap around the end of the loop. A block that
+   * disappeared off the bottom and reappeared at the top would be harder to read
+   * than the two blocks it replaced.
+   */
+  runs(layerId) {
+    const set = this.events[layerId];
+    const out = [];
+    if (!set) return out;
+
+    for (let lane = 0; lane < 4; lane++) {
+      let start = null;
+      let last = null;
+      for (let slot = 0; slot < this.loopSteps; slot += GRID) {
+        if (set.has(slot * 4 + lane)) {
+          if (start === null) start = slot;
+          last = slot;
+        } else if (start !== null) {
+          out.push({ lane, start, length: last - start + GRID });
+          start = null;
+        }
+      }
+      if (start !== null) out.push({ lane, start, length: last - start + GRID });
+    }
+    return out;
+  }
+
+  /**
+   * Does a held block BEGIN on this slot?
+   *
+   * The scheduler fires a voice only where this is true, so a run sounds once
+   * and then rings for its length rather than retriggering on every step it
+   * covers. A held 808 is one long note, which is what an 808 does; a held kick
+   * is one kick, which is what a kick does.
+   */
+  isRunStart(layerId, lane, slot) {
+    const set = this.events[layerId];
+    if (!set || !set.has(slot * 4 + lane)) return false;
+
+    // A lane filled the whole way round has no gap to start after, so give it
+    // one — otherwise it would be occupied everywhere and sound nowhere.
+    const filled = this.loopSteps / GRID;
+    let n = 0;
+    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * 4 + lane)) n++;
+    if (n === filled) return slot === 0;
+
+    const prev = ((slot - GRID) % this.loopSteps + this.loopSteps) % this.loopSteps;
+    return !set.has(prev * 4 + lane);
   }
 
   count(layerId) {
