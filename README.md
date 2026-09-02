@@ -20,6 +20,9 @@ tells you a number; you choose a speed you can hear.
 **Press START.** A click counts you in over a quiet drone, so you are never
 playing into silence. Then play a kick and a snare for as long as you like.
 
+**Press pause whenever you want it to shut up.** It keeps everything; nothing
+is accepted, nothing is thrown away, and play picks up from the top of the loop.
+
 **Press STOP to keep it, or ↺ to throw it away and go again.** What you keep
 starts looping, and the click retires — from here your own beat is the click.
 

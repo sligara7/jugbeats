@@ -361,3 +361,20 @@ body.portrait .rotate { display: grid; }
   opacity: 0.5;
   word-break: break-word;
 }
+
+/* The off switch. Quieter than the transport, because it is not how she plays —
+   it is how she gets a moment's peace. */
+.playpause {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: rgba(244, 238, 252, 0.8);
+  font: inherit;
+  font-size: 14px;
+  padding: 15px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.playpause[data-state="stopped"] { border-color: var(--hot); color: var(--hot); }
+.playpause:active { background: rgba(255, 255, 255, 0.28); color: var(--ink); }

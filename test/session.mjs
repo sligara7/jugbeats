@@ -170,6 +170,34 @@ console.log('\nthe click retires when her beat takes over');
   check('and it is gone from round two onward', !s.clickAudible, `round ${s.round.id}`);
 }
 
+console.log('\nstopping the music keeps everything she made');
+
+{
+  // Without an off switch the loop plays until the tab is closed. The point of
+  // this one is that it is NOT the other two: STOP keeps a round and moves on,
+  // RESET empties one, and this just makes it quiet.
+  const track = new Track();
+  const s = new Session(track);
+  tapOut(s, 110);
+  s.begin(0); s.tick(0);
+  track.record('r1', 0, 0);
+  track.record('r1', 1, 8);
+  check('she is recording', s.recording);
+
+  s.halt();
+  check('halting stops the recording', !s.recording);
+  check('but keeps every note she played', track.count('r1') === 2, `${track.count('r1')}`);
+  check('and does not accept the round behind her back', !track.accepted.has('r1'));
+  check('nor advance her past it', s.round.id === 'r1');
+  check('and her tempo is still hers', track.bpm === 110 && s.tempoIsSet);
+
+  // She can pick straight back up.
+  s.begin(0); s.tick(0);
+  check('she can start again where she was', s.recording && s.round.id === 'r1');
+  track.record('r1', 0, 16);
+  check('and add to what was already there', track.count('r1') === 3);
+}
+
 console.log('\nmuting silences a layer without losing it');
 
 {

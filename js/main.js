@@ -258,6 +258,11 @@ function refresh() {
     gridBtn.textContent = track.gridFor(round.id) === FINE_GRID ? '1/16 notes' : '1/8 notes';
   }
 
+  const pp = el('playpause');
+  pp.hidden = !session.tempoIsSet;
+  pp.textContent = clock.running ? 'pause' : 'play';
+  pp.dataset.state = clock.running ? 'running' : 'stopped';
+
   const undo = resetAction();
   el('reset').hidden = undo === null;
   if (undo) {
@@ -369,6 +374,43 @@ el('length').addEventListener('click', (e) => {
  * instead of 108, so her timing is recorded rather than tidied — which is why
  * this is per round and off unless she asks.
  */
+/**
+ * Stop the music, and start it again.
+ *
+ * Deliberately NOT called stop: the big button already says STOP and means
+ * "keep this round and move on". Two stops meaning different things on one
+ * screen is how a child learns to distrust both.
+ *
+ * Pausing releases anything still ringing and forgets which steps have already
+ * sounded, because the clock's step numbers begin again from zero on the next
+ * start — the same staleness that once silenced the metronome for half a
+ * minute. The drone goes with it: silence should mean silence.
+ */
+function pauseAll() {
+  clock.stop();
+  for (const h of held.values()) h.release();
+  held.clear();
+  holding.clear();
+  alreadySounded.clear();
+  voices.setDroneLevel(0, 0.4);
+  session.halt();
+  refresh();
+}
+
+function resumeAll() {
+  if (!session.tempoIsSet) return;
+  clock.start();
+  voices.startDrone();
+  voices.setDroneLevel(0.18, 1.2);
+  refresh();
+}
+
+el('playpause').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (clock.running) { pauseAll(); flash('stopped'); }
+  else { resumeAll(); flash('off we go'); }
+});
+
 el('grid').addEventListener('click', (e) => {
   e.stopPropagation();
   const round = session.round;

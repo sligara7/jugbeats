@@ -194,6 +194,20 @@ export class Session {
     return true;
   }
 
+  /**
+   * Stop everything without keeping or throwing anything away.
+   *
+   * Distinct from STOP, which keeps a round and moves on, and from RESET, which
+   * empties one. This is just "be quiet" — the track is untouched and she picks
+   * up wherever she likes. Anything she had already recorded in this round
+   * stays recorded; she simply is not recording any more.
+   */
+  halt() {
+    this.state = 'tempo';
+    this._emit({ kind: 'halted' });
+    return true;
+  }
+
   /** RESET — throw this round away and go again. Never touches earlier rounds. */
   reset() {
     const id = this.round.id;
