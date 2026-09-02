@@ -27,6 +27,20 @@ export const STEPS_PER_BAR = 16;
 export const GRID = 2;
 
 /**
+ * Snap a continuous playhead position to the grid she can land on.
+ *
+ * EXPORTED SO THERE IS EXACTLY ONE OF THESE. It was previously done in two
+ * places with two different roundings — the track to the nearest eighth, the
+ * shell's double-trigger guard to the nearest sixteenth — and the moment they
+ * disagreed the guard was filed against a step the note does not live on, so
+ * the note sounded twice. Anything that needs to know which step a moment
+ * belongs to calls this.
+ */
+export function quantise(atStep) {
+  return Math.round(atStep / GRID) * GRID;
+}
+
+/**
  * The layers, in the order the keys hand over. Each names what its four lanes
  * play. Drums map to baked voices; bass and lead map to scale degrees.
  *
@@ -47,8 +61,16 @@ export const LAYERS = [
 const layerById = (id) => LAYERS.find((l) => l.id === id);
 
 export class Track {
-  /** @param {{bars?: number}} opts */
-  constructor({ bars = 4 } = {}) {
+  /**
+   * @param {{bars?: number}} opts
+   *
+   * TWO BARS, not four. Four bars is thirty-two eighth-note slots per lane and a
+   * seven-second loop — far more room than a nine-year-old wants to fill, and
+   * the owner's verdict on playing it was that the drums were simply too much to
+   * keep up with. Two bars halves everything, and it brings her pattern back
+   * round twice as often, which is most of the satisfaction of making a loop.
+   */
+  constructor({ bars = 2 } = {}) {
     this.bars = bars;
     /** events[layerId] = Set of encoded "step*4+lane" — a Set so a double tap
      *  on the same slot is idempotent rather than a stack of identical notes. */
@@ -74,7 +96,7 @@ export class Track {
    * Returns the loop step it landed on, so the stage can flash the right slot.
    */
   record(layerId, lane, atStep) {
-    const quantised = Math.round(atStep / GRID) * GRID;
+    const quantised = quantise(atStep);
     const slot = ((quantised % this.loopSteps) + this.loopSteps) % this.loopSteps;
     this.events[layerId]?.add(slot * 4 + lane);
     return slot;

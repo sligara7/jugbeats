@@ -55,7 +55,7 @@ html, body {
 
 .layers { display: flex; gap: 6px; }
 
-.share {
+.share, .clear {
   appearance: none;
   border: 1px solid var(--hot);
   background: transparent;
@@ -63,11 +63,20 @@ html, body {
   font: inherit;
   font-size: 13px;
   padding: 7px 14px;
-  margin-left: 6px;
   border-radius: 999px;
   cursor: pointer;
 }
-.share:active { background: var(--hot); color: #14060d; }
+.share { margin-left: 6px; }
+.share:active, .clear:active { background: var(--hot); color: #14060d; }
+
+/* Deliberately quieter than send. It is the button she reaches for when a
+   layer has got away from her, not one she should hit by accident. */
+.clear {
+  margin-left: 10px;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: rgba(244, 238, 252, 0.75);
+}
+.clear:active { background: rgba(255, 255, 255, 0.28); color: var(--ink); }
 
 .layer {
   appearance: none;

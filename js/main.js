@@ -11,7 +11,7 @@
 
 import { Clock } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, LAYERS, GRID } from './track.js';
+import { Track, LAYERS, GRID, quantise } from './track.js';
 import { Stage } from './stage.js';
 import { Coach } from './coach.js';
 import { trackFromLocation, share } from './link.js';
@@ -76,7 +76,14 @@ function onHit(lane) {
   if (at === null) return;
   const slot = track.record(layer.id, lane, at);
 
-  const absStep = Math.round(at);
+  // The SAME function the track quantises with — deliberately shared rather than
+  // reimplemented. This used to round to the nearest sixteenth while the track
+  // rounded to the nearest eighth, so whenever the two disagreed the guard was
+  // filed under a step the note does not live on, missed, and the scheduler
+  // sounded the note again a fraction of a beat after she heard it. Roughly
+  // every other tap doubled. Four lanes of that is not a drum kit, it is a room
+  // full of slot machines.
+  const absStep = quantise(at);
   if (clock.timeOf(absStep) > ctx.currentTime) {
     alreadySounded.add(`${layer.id}:${lane}:${absStep}`);
   }
@@ -255,6 +262,18 @@ window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 
 // ---------------------------------------------------------------------------
 // Sending it back. The round trip is the point (flow:round-trip).
 // ---------------------------------------------------------------------------
+
+// Until now a layer could only ever get denser — every tap added a note and
+// nothing took one away, so a busy pattern was permanent. That is most of how
+// the drums got out of hand. Starting a layer again has to be one tap.
+el('clear').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const layer = coach.layer;
+  if (track.count(layer.id) === 0) return;
+  track.clear(layer.id);
+  holding.clear();
+  flash(`${layer.label.toLowerCase()} cleared`);
+});
 
 el('share').addEventListener('click', async (e) => {
   e.stopPropagation();

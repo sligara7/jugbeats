@@ -34,7 +34,7 @@ const sameNotes = (a, b) =>
 console.log('\nround trip');
 
 {
-  const t = new Track({ bars: 4 });
+  const t = new Track({ bars: 4 }); // explicit: not the default
   t.record('drums', 0, 0);
   t.record('drums', 1, 8);
   t.record('drums', 2, 4);
@@ -100,7 +100,7 @@ console.log('\nevery version we have ever shipped still decodes');
   const CORPUS = [
     { version: 1, note: 'kick on 1, snare on 3, one 808',
       encoded: encode((() => {
-        const t = new Track({ bars: 4 });
+        const t = new Track({ bars: 4 }); // explicit: not the default
         t.record('drums', 0, 0);
         t.record('drums', 1, 8);
         t.record('bass', 0, 0);

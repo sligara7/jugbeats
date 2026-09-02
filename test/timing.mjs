@@ -11,7 +11,7 @@
 // actually breaks schedulers in the wild: a wake-up that arrives late.
 
 import { Clock, STEPS_PER_BAR } from '../js/clock.js';
-import { Track } from '../js/track.js';
+import { Track, quantise, GRID } from '../js/track.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -203,6 +203,41 @@ console.log('\nnotes you can hold become one block; drums never do');
   for (let s = 0; s < full.loopSteps; s += 2) if (full.isRunStart('bass', 2, s)) starts.push(s);
   check('a lane held all the way round still sounds, once', starts.length === 1 && starts[0] === 0,
     `${starts.length} start(s)`);
+}
+
+console.log('\na tap sounds once, never twice');
+
+{
+  // THE BUG THAT SHIPPED. The shell suppresses the scheduled copy of a note she
+  // has just played live, keyed by the step the note lands on. It computed that
+  // step with its own rounding — nearest sixteenth — while the track used
+  // nearest eighth. Where they disagreed the guard missed and the note sounded a
+  // second time about a tenth of a beat later. Every other tap, across four
+  // lanes: a room full of slot machines.
+  const t = new Track({ bars: 2 });
+  let disagreements = 0;
+
+  for (let i = 0; i < 4000; i++) {
+    const at = (i * 0.017) % (t.loopSteps * 2);
+    const slotFromTrack = t.record('drums', 0, at);
+    const slotFromGuard = ((quantise(at) % t.loopSteps) + t.loopSteps) % t.loopSteps;
+    if (slotFromTrack !== slotFromGuard) disagreements++;
+  }
+
+  check('the guard and the track agree on every position', disagreements === 0,
+    `${disagreements} of 4000 would have doubled`);
+
+  // The old rounding, kept as the thing that must stay broken-if-reintroduced.
+  let oldWayDisagreements = 0;
+  for (let i = 0; i < 4000; i++) {
+    const at = (i * 0.017) % (t.loopSteps * 2);
+    if (Math.round(at) !== quantise(at)) oldWayDisagreements++;
+  }
+  check('the old rounding really did disagree, so this test has teeth',
+    oldWayDisagreements > 0, `${oldWayDisagreements} of 4000`);
+
+  check('quantise always lands on the playable grid',
+    Array.from({ length: 500 }, (_, i) => quantise(i * 0.13)).every((s) => s % GRID === 0));
 }
 
 console.log('\nquantising is symmetric');
