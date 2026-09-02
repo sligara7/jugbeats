@@ -129,6 +129,10 @@ clock.onSchedule((from, to, timeOf) => {
     for (const round of ROUNDS) {
       // Only rounds she has KEPT play back. The one in her hands is heard live.
       if (!track.accepted.has(round.id) && round.id !== session.round.id) continue;
+      // A silenced round stops looping. Her LIVE taps are unaffected — they go
+      // out through onHit and never come near this — so she can mute a layer
+      // and still play it, which is how you find out what it was doing.
+      if (track.isMuted(round.id)) continue;
 
       for (const lane of track.lanesAt(round.id, slot)) {
         // A held block sounds once, where it begins, and rings for its length.
@@ -196,7 +200,22 @@ function refresh() {
     b.disabled = i > session.furthestReachable();
     b.setAttribute('aria-current', i === session.roundIndex ? 'true' : 'false');
     if (track.accepted.has(r.id)) b.classList.add('kept');
-    b.addEventListener('click', (e) => { e.stopPropagation(); session.goTo(i); });
+    if (track.isMuted(r.id)) b.classList.add('muted');
+
+    // One chip, two jobs, and which one you get depends on where you already
+    // are: tap another round to GO there, tap the one you are on to SILENCE it.
+    // Once she has built everything, playing with the arrangement is the more
+    // common action, and it lands on the chip already under her attention.
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (i === session.roundIndex && track.accepted.has(r.id)) {
+        const nowMuted = track.toggleMute(r.id);
+        flash(nowMuted ? `${r.label.toLowerCase()} off` : `${r.label.toLowerCase()} back on`);
+      } else {
+        session.goTo(i);
+      }
+      refresh();
+    });
     strip.appendChild(b);
   });
 

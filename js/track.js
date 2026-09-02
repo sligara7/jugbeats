@@ -107,14 +107,43 @@ export const ROUNDS = [
 export const roundById = (id) => ROUNDS.find((r) => r.id === id);
 
 export class Track {
-  /** @param {{bars?: number}} opts */
-  constructor({ bars = 2 } = {}) {
+  /**
+   * @param {{bars?: number}} opts
+   *
+   * FOUR BARS, and this is a reversion worth labelling as one.
+   *
+   * It was cut from four to two because the drums were getting out of hand, and
+   * that reason is now genuinely gone: the eighth-note grid stopped notes
+   * arriving faster than a thumb can move, the clear button gave her a way to
+   * thin a busy layer, and half of what sounded like clutter turned out to be a
+   * bug that sounded every other tap twice.
+   *
+   * With the cause removed, two bars was only making the loop come round twice
+   * as often — which is exactly what made it feel repetitive. A design that
+   * never revisits a constraint once its reason has gone just accumulates them.
+   */
+  constructor({ bars = 4 } = {}) {
     this.bars = bars;
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
     /** Which rounds she has accepted with STOP. Only these play back. */
     this.accepted = new Set();
+
+    /**
+     * Rounds silenced right now (dec:arrangement-breathes).
+     *
+     * DELIBERATELY NOT SAVED AND NOT SHARED, which is the whole distinction:
+     * CLEAR deletes, MUTE silences. Muting is something she does WHILE playing —
+     * drop the drums out for four bars and bring them back, the way a producer
+     * does — and a performance choice is not part of the composition. Whoever
+     * opens her link hears everything she made; if she truly does not want a
+     * layer, clearing it is the tool for that.
+     *
+     * It also means this costs no link-format change, which is the difference
+     * between an afternoon and a version bump.
+     */
+    this.muted = new Set();
     /** Her shaping numbers, per pitched instrument. Small, flat, link-sized. */
     this.shaping = { bass: {}, lead: {} };
     /** The tempo she tapped. Part of the track: it is hers, not the game's. */
@@ -220,10 +249,26 @@ export class Track {
   clear(roundId) {
     this.events[roundId]?.clear();
     this.accepted.delete(roundId);
+    // An emptied round has nothing to silence, and leaving it muted would mean
+    // she rebuilds it and hears nothing.
+    this.muted.delete(roundId);
   }
 
   accept(roundId) {
     if (this.count(roundId) > 0) this.accepted.add(roundId);
+  }
+
+  isMuted(roundId) {
+    return this.muted.has(roundId);
+  }
+
+  /** Silence a kept round, or bring it back. Only kept rounds can be muted —
+   *  there is nothing to silence in one she has not finished. */
+  toggleMute(roundId) {
+    if (!this.accepted.has(roundId)) return false;
+    if (this.muted.has(roundId)) this.muted.delete(roundId);
+    else this.muted.add(roundId);
+    return this.muted.has(roundId);
   }
 
   isEmpty() {

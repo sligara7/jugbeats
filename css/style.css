@@ -161,6 +161,15 @@ html, body {
 }
 /* Kept rounds get a tick, so what is finished is visible at a glance. */
 .chip.kept::before { content: "✓ "; opacity: 0.7; }
+
+/* A silenced round has to look silenced from across the room — dimmed AND
+   struck through, because dimming alone reads as "disabled" and she needs to
+   know it is still hers and coming back. */
+.chip.muted {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+.chip.muted::before { content: "○ "; }
 .chip[aria-current="true"] {
   background: var(--hot);
   border-color: var(--hot);

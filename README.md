@@ -26,6 +26,10 @@ starts looping, and the click retires — from here your own beat is the click.
 **Then the next sounds over the top.** Hats and cowbell, then the 808, then the
 melody — each round playing over everything you kept before it.
 
+**Tap a round you have finished to drop it out**, and tap it again to bring it
+back. That is how a loop stops being a loop and starts being an arrangement:
+real music breathes by taking things away. Muting silences; *clear* deletes.
+
 The drum rounds give you one sound per thumb. The 808 and melody give you
 **two notes per thumb**, and pressing two together makes a chord. That is not a
 return to four keys: four drums were four instruments to choose between, four

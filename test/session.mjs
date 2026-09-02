@@ -170,6 +170,49 @@ console.log('\nthe click retires when her beat takes over');
   check('and it is gone from round two onward', !s.clickAudible, `round ${s.round.id}`);
 }
 
+console.log('\nmuting silences a layer without losing it');
+
+{
+  // The distinction that matters: CLEAR deletes, MUTE silences. Dropping the
+  // drums out for four bars and bringing them back is what a producer does, and
+  // it is the cheapest way a fixed loop gets an arrangement.
+  const track = new Track();
+  track.record('r1', 0, 0);
+  track.record('r1', 1, 8);
+  track.accept('r1');
+
+  check('a kept round starts audible', !track.isMuted('r1'));
+  check('muting it reports that it is muted', track.toggleMute('r1') === true);
+  check('and it is', track.isMuted('r1'));
+  check('but its notes are all still there', track.count('r1') === 2);
+  check('unmuting brings it back', track.toggleMute('r1') === false && !track.isMuted('r1'));
+
+  // Nothing to silence in a round she has not finished.
+  check('a round she has not kept cannot be muted', track.toggleMute('r2') === false);
+  check('and does not become muted by trying', !track.isMuted('r2'));
+
+  // Clearing a muted round must not leave it silent, or she rebuilds it and
+  // hears nothing and has no idea why.
+  track.toggleMute('r1');
+  track.clear('r1');
+  check('clearing a muted round unmutes it too', !track.isMuted('r1'));
+}
+
+console.log('\nthe loop is four bars again');
+
+{
+  const track = new Track();
+  check('a new track is four bars', track.bars === 4, `${track.bars}`);
+  check('which is 32 places to put a note in a lane',
+    track.loopSteps / 2 === 32, `${track.loopSteps / 2}`);
+
+  // Muting is a performance choice, not part of the composition, so it must not
+  // be in the snapshot the link is built from.
+  track.record('r1', 0, 0); track.accept('r1'); track.toggleMute('r1');
+  check('muting is not part of what gets saved',
+    JSON.stringify(track.toJSON()).includes('muted') === false);
+}
+
 console.log('\nshe can only reach rounds she has earned');
 
 {
