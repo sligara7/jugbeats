@@ -1,0 +1,11 @@
+{
+  "sampleRate": 22050,
+  "voices": {
+    "kick": "kick.wav",
+    "snare": "snare.wav",
+    "hat": "hat.wav",
+    "openhat": "openhat.wav",
+    "cowbell": "cowbell.wav",
+    "clap": "clap.wav"
+  }
+}

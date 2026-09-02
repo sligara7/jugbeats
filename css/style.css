@@ -1,0 +1,166 @@
+/* The shell's look. Dark ground, hot accents — the phonk end of the crayon box.
+   Everything here is in service of one thing: nothing on screen may compete
+   with the four keys and the blocks falling into them. */
+
+:root {
+  --bg: #0d0a14;
+  --ink: #f4eefc;
+  --hot: #ff3d7f;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font: 500 16px/1.4 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+
+  /* A rhythm game and a browser want the same gestures. The browser loses. */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Keep the keys clear of the notch, which in landscape is on a long edge. */
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
+}
+
+/* --- the layer strip: the only navigation in the game --------------------- */
+
+.strip {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: calc(12px + var(--safe-r));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 5;
+}
+
+.layers { display: flex; gap: 6px; }
+
+.share {
+  appearance: none;
+  border: 1px solid var(--hot);
+  background: transparent;
+  color: var(--hot);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  margin-left: 6px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.share:active { background: var(--hot); color: #14060d; }
+
+.layer {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.layer[aria-current="true"] {
+  background: var(--hot);
+  border-color: var(--hot);
+  color: #14060d;
+}
+.layer:disabled { opacity: 0.28; cursor: default; }
+
+/* --- a nudge from the coach ---------------------------------------------- */
+
+.nudge {
+  position: fixed;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 15px;
+  color: var(--hot);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+  z-index: 5;
+}
+.nudge.show { opacity: 1; transform: none; }
+
+/* --- the first-tap gate --------------------------------------------------- */
+
+.gate {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  text-align: center;
+  z-index: 20;
+  transition: opacity 0.35s;
+}
+.gate.gone { opacity: 0; pointer-events: none; }
+
+.gate h1 {
+  margin: 0 0 6px;
+  font-size: clamp(30px, 8vw, 54px);
+  letter-spacing: -0.02em;
+  color: var(--hot);
+}
+.gate-label { margin: 0; font-size: 17px; opacity: 0.85; }
+.gate.loaded .gate-label { animation: pulse 1.7s ease-in-out infinite; }
+
+.hint {
+  margin: 26px 20px 0;
+  font-size: 13px;
+  opacity: 0.42;
+  max-width: 22em;
+}
+
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* --- portrait: ask her to turn it ---------------------------------------- */
+
+.rotate {
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: var(--bg);
+  text-align: center;
+  z-index: 30;
+}
+body.portrait .rotate { display: grid; }
+
+.rotate-icon {
+  font-size: 64px;
+  color: var(--hot);
+  animation: tip 2s ease-in-out infinite;
+}
+@keyframes tip {
+  0%, 45% { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(90deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate.loaded .gate-label, .rotate-icon { animation: none; }
+}

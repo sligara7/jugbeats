@@ -1,0 +1,13 @@
+# reflow2 keeps a live database here. The design belongs in git as an export,
+# never as the running store — it holds locks and log segments that mean
+# nothing on another machine.
+.reflow2/
+
+# NOTE: kit/*.wav IS committed, deliberately.
+# GitHub Pages serves the repository as-is with no build step, so a generated
+# file that has to ship has to be in the repository. The forge remains the
+# source of truth — the recipes are in js/dsp.js, and `node forge/build-kit.mjs`
+# regenerates these byte-for-byte. Never hand-edit them.
+
+demo.wav
+node_modules/

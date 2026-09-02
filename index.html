@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover so the highway reaches the edges; the CSS puts the keys
+     back inside the safe area, which in landscape is where the notch lives. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>JugBeats — make a phonk beat</title>
+
+<!-- The chat preview (cap:link-preview-card). WhatsApp needs ABSOLUTE urls and
+     caches them hard, so these have to be right BEFORE the link is shared
+     anywhere — a preview fixed afterwards may never be re-fetched. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="JugBeats">
+<meta property="og:description" content="Turn your phone sideways, tap the blocks, make a phonk beat. Then send it back.">
+<meta property="og:image" content="https://sligara7.github.io/jugbeats/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0d0a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div class="strip">
+  <div id="layers" class="layers" aria-label="your layers"></div>
+  <button id="share" class="share" aria-label="send your beat">send ▸</button>
+</div>
+
+<div id="nudge" class="nudge" role="status" aria-live="polite"></div>
+
+<!-- The first-tap gate. Audio cannot start outside a gesture on iOS, so this
+     screen is not decoration — it is the only place the sound can be started
+     from (dec:beat-the-silent-switch). -->
+<div id="gate" class="gate">
+  <div class="gate-inner">
+    <h1 id="gate-title">JugBeats</h1>
+    <p id="gate-label" class="gate-label">loading the sounds…</p>
+    <p class="hint">no sound? check the little switch on the side of your phone</p>
+  </div>
+</div>
+
+<!-- Shown only in portrait. iOS Safari will not let us rotate for her. -->
+<div class="rotate">
+  <div>
+    <div class="rotate-icon">▭</div>
+    <p>turn your phone sideways</p>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
