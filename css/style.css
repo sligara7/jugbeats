@@ -270,3 +270,66 @@ body.portrait .rotate { display: grid; }
 @media (prefers-reduced-motion: reduce) {
   .gate.loaded .gate-label, .rotate-icon { animation: none; }
 }
+
+/* --- "no sound?" — the one thing that must always be reachable ------------ */
+
+.help {
+  position: fixed;
+  left: calc(12px + var(--safe-l));
+  bottom: calc(14px + var(--safe-b));
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 238, 252, 0.6);
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  z-index: 6;
+}
+.help:active { background: rgba(255, 255, 255, 0.2); color: var(--ink); }
+
+.panel {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 4, 10, 0.94);
+  z-index: 40;
+  overflow-y: auto;
+}
+.panel-inner {
+  max-width: 34em;
+  padding: 22px 26px calc(22px + var(--safe-b));
+  font-size: 14px;
+  line-height: 1.55;
+}
+.panel h2 { margin: 0 0 10px; font-size: 20px; color: var(--hot); }
+.panel ol { margin: 0; padding-left: 1.2em; }
+.panel li { margin-bottom: 9px; }
+.panel i { opacity: 0.75; }
+
+.retry, .closepanel {
+  appearance: none;
+  border: 1px solid var(--hot);
+  background: transparent;
+  color: var(--hot);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.retry:active, .closepanel:active { background: var(--hot); color: #14060d; }
+.closepanel { margin-top: 16px; border-color: rgba(255,255,255,0.28); color: rgba(244,238,252,0.7); }
+
+/* Deliberately plain and small: it is for a grown-up trying to work out what
+   went wrong, not for her. */
+.diag {
+  margin: 16px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.5;
+  word-break: break-word;
+}

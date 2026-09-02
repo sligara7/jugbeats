@@ -46,6 +46,28 @@
 
 <div id="nudge" class="nudge" role="status" aria-live="polite"></div>
 
+<!-- Always reachable, because the gate's hint vanishes the moment she taps and
+     that is exactly when she finds out there is no sound. -->
+<button id="help" class="help">no sound?</button>
+
+<div id="silentpanel" class="panel" hidden>
+  <div class="panel-inner">
+    <h2>Can’t hear it?</h2>
+    <ol>
+      <li><b>Press volume up</b> while the game is playing. On an iPhone the
+        volume buttons change the <i>ringer</i> until something is actually
+        making sound.</li>
+      <li><b>Turn off silent mode.</b> On newer iPhones there is no switch —
+        swipe down from the top-right for Control Centre and tap the bell, or
+        press the Action Button on the left edge.</li>
+      <li><b>Take it off a Focus mode</b> if one is on.</li>
+      <li>Then <button id="retry" class="retry">try the sound again</button></li>
+    </ol>
+    <p id="diag" class="diag"></p>
+    <button id="closepanel" class="closepanel">close</button>
+  </div>
+</div>
+
 <!-- The transport, straight down the middle — the one place on a landscape
      phone where neither thumb rests (dec:two-thumbs-loop-pedal). -->
 <div class="transport">
@@ -61,7 +83,7 @@
   <div class="gate-inner">
     <h1 id="gate-title">JugBeats</h1>
     <p id="gate-label" class="gate-label">loading the sounds…</p>
-    <p class="hint">no sound? check the little switch on the side of your phone</p>
+    <p class="hint">turn your volume up — and if it stays quiet, tap “no sound?” after you start</p>
   </div>
 </div>
 
