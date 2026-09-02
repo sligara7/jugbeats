@@ -6,21 +6,25 @@
 //
 // Governed by dec:one-clock — every block's position is COMPUTED from the clock,
 // never advanced per frame, so a dropped frame loses a frame and not the beat —
-// and by dec:two-thumbs-loop-pedal, which fixes two lanes, one per thumb, and
-// leaves the middle of the screen free.
+// and by dec:two-thumbs-loop-pedal, which keeps her thumbs where they rest and
+// leaves the middle of the screen free. Two lanes on the drums, four on the
+// pitched rounds — always split evenly between the two thumbs.
 //
 // This part never calls back into the shell (dec:shell-is-the-composition-root).
 
-import { STEPS_PER_BAR, LANES } from './track.js';
+import { STEPS_PER_BAR } from './track.js';
 
 /** How long a block takes to fall, matched to the game she already plays. */
 const FALL_SECONDS = 2.0;
 
-/** Keyboard fallback, for testing without a phone. Not a target. */
-const KEYS = ['f', 'j'];
+/**
+ * Keyboard fallback, for testing without a phone. Not a target.
+ * Ordered so a two-lane round uses the outer pair, which is what her thumbs do.
+ */
+const KEYS_BY_COUNT = { 2: ['f', 'j'], 4: ['d', 'f', 'j', 'k'] };
 
-/** One colour per lane. Two now, so they can be far apart in hue. */
-const LANE_COLOURS = ['#ff3d7f', '#3ddbd9'];
+/** One colour per lane, left to right. Far apart in hue so nothing is ambiguous. */
+const LANE_COLOURS = ['#ff3d7f', '#ffb03a', '#3ddbd9', '#b46cff'];
 const BG = '#0d0a14';
 
 export class Stage {
@@ -43,8 +47,8 @@ export class Stage {
     this.countdown = null;   // beats remaining in the count-in, or null
 
     this._raf = null;
-    this._flash = [0, 0];
-    this._holding = [false, false];
+    this._flash = [0, 0, 0, 0];
+    this._holding = [false, false, false, false];
     this._byPointer = new Map();
     this._w = 0;
     this._h = 0;
@@ -88,7 +92,7 @@ export class Stage {
   }
 
   // -------------------------------------------------------------------------
-  // Layout. Two lanes hugging the edges, and the middle left empty — which is
+  // Layout. Lanes hugging the edges, and the middle left empty — which is
   // where the transport goes, because the middle of a landscape phone is the
   // one place neither thumb is.
   // -------------------------------------------------------------------------
@@ -99,15 +103,30 @@ export class Stage {
     const keyH = Math.min(h * 0.34, 190);
     const hitY = h - keyH - 12;
 
+    // Half the lanes under each thumb, both groups hugging the edges. The middle
+    // stays empty whatever the count, because that is where the transport lives
+    // and where neither thumb rests.
+    const n = this.lanes();
+    const perSide = n / 2;
     const pad = Math.max(w * 0.025, 12);
-    const laneW = Math.min(w * 0.33, 320);
+    const gap = Math.max(w * 0.012, 7);
+    const groupW = Math.min(w * (perSide === 1 ? 0.33 : 0.37), perSide === 1 ? 320 : 360);
+    const keyW = (groupW - gap * (perSide - 1)) / perSide;
 
-    const keys = [
-      { x: pad, y: hitY + 12, w: laneW, h: keyH },
-      { x: w - pad - laneW, y: hitY + 12, w: laneW, h: keyH },
-    ];
+    const keys = [];
+    for (let i = 0; i < n; i++) {
+      const side = i < perSide ? 0 : 1;
+      const withinSide = i % perSide;
+      const groupX = side === 0 ? pad : w - pad - groupW;
+      keys.push({ x: groupX + withinSide * (keyW + gap), y: hitY + 12, w: keyW, h: keyH });
+    }
     const lanes = keys.map((k) => ({ x: k.x, w: k.w, cx: k.x + k.w / 2 }));
     return { keys, lanes, hitY, keyH };
+  }
+
+  /** How many keys this round puts on screen. Two on drums, four when pitched. */
+  lanes() {
+    return this.round?.lanes?.length ?? 2;
   }
 
   // -------------------------------------------------------------------------
@@ -116,13 +135,13 @@ export class Stage {
 
   _bindInput() {
     const press = (lane) => {
-      if (lane < 0 || lane >= LANES || this._holding[lane]) return;
+      if (lane < 0 || lane >= this.lanes() || this._holding[lane]) return;
       this._holding[lane] = true;
       this.onHit(lane);
       this._flash[lane] = performance.now();
     };
     const release = (lane) => {
-      if (lane < 0 || lane >= LANES || !this._holding[lane]) return;
+      if (lane < 0 || lane >= this.lanes() || !this._holding[lane]) return;
       this._holding[lane] = false;
       this.onRelease(lane);
     };
@@ -132,7 +151,7 @@ export class Stage {
       const x = clientX - r.left;
       const y = clientY - r.top;
       const { keys } = this._layout();
-      for (let i = 0; i < LANES; i++) {
+      for (let i = 0; i < keys.length; i++) {
         const k = keys[i];
         // Generous vertically: everything below the line belongs to the key
         // under it, so a thumb landing slightly high still counts.
@@ -161,18 +180,18 @@ export class Stage {
     this.canvas.addEventListener('pointercancel', up);
     window.addEventListener('blur', () => {
       this._byPointer.clear();
-      for (let i = 0; i < LANES; i++) release(i);
+      for (let i = 0; i < this._holding.length; i++) release(i);
     });
 
     window.addEventListener('keydown', (e) => {
       if (e.repeat || e.metaKey || e.ctrlKey) return;
-      const lane = KEYS.indexOf(e.key.toLowerCase());
+      const lane = (KEYS_BY_COUNT[this.lanes()] ?? []).indexOf(e.key.toLowerCase());
       if (lane < 0) return;
       e.preventDefault();
       press(lane);
     });
     window.addEventListener('keyup', (e) => {
-      const lane = KEYS.indexOf(e.key.toLowerCase());
+      const lane = (KEYS_BY_COUNT[this.lanes()] ?? []).indexOf(e.key.toLowerCase());
       if (lane >= 0) release(lane);
     });
   }
@@ -189,7 +208,7 @@ export class Stage {
     g.fillStyle = BG;
     g.fillRect(0, 0, this._w, this._h);
 
-    for (let i = 0; i < LANES; i++) {
+    for (let i = 0; i < lanes.length; i++) {
       g.fillStyle = 'rgba(255,255,255,0.05)';
       g.fillRect(lanes[i].x, 0, lanes[i].w, hitY);
     }
@@ -249,6 +268,7 @@ export class Stage {
 
         const h = Math.max(minH, yEnd - yStart);
         const L = lanes[lane];
+        if (!L) continue;
         g.globalAlpha = alpha * (yEnd > hitY ? Math.max(0, 1 - (yEnd - hitY) / 40) : 1);
         g.fillStyle = LANE_COLOURS[lane];
         roundRect(g, L.x + 6, yEnd - h, L.w - 12, h, Math.min(12, h / 2));
@@ -273,7 +293,7 @@ export class Stage {
 
   _drawKeys(g, keys) {
     const now = performance.now();
-    for (let i = 0; i < LANES; i++) {
+    for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
       const hot = this._holding[i] ? 1 : Math.max(0, 1 - (now - this._flash[i]) / 180);
 
@@ -291,7 +311,7 @@ export class Stage {
       const name = this.round?.lanes?.[i]?.name;
       if (name) {
         g.fillStyle = 'rgba(255,255,255,0.82)';
-        g.font = '600 15px ui-rounded, system-ui, sans-serif';
+        g.font = `600 ${k.w > 150 ? 15 : 13}px ui-rounded, system-ui, sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText(name, k.x + k.w / 2, k.y + k.h / 2);

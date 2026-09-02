@@ -5,14 +5,24 @@
 // has to be expressible in the link format without translation, because this is
 // the thing that gets packed into a URL and sent to someone.
 //
-// Governed by dec:two-thumbs-loop-pedal — two lanes per round, built up one
-// round at a time — and by dec:one-clock, since recording happens after the
+// Governed by dec:two-thumbs-loop-pedal — she builds it one round at a time —
+// and by dec:one-clock, since recording happens after the
 // sound has already played, never between her thumb and her ear.
 
 export const STEPS_PER_BAR = 16;
 
-/** Two lanes. One per thumb (dec:two-thumbs-loop-pedal). */
-export const LANES = 2;
+/**
+ * The most lanes any round has. Used as a fixed STRIDE when packing notes, so
+ * every round encodes the same way whether it has two lanes or four — a couple
+ * of wasted bits per step buys one code path and one link format.
+ *
+ * How many lanes a round ACTUALLY has is `round.lanes.length`, and that varies:
+ * two on the drums, four on the pitched rounds (dec:more-notes-on-the-pitched-rounds).
+ */
+export const LANE_STRIDE = 4;
+
+/** How many keys this round puts under her thumbs. */
+export const laneCount = (roundId) => roundById(roundId)?.lanes.length ?? 0;
 
 /**
  * The grid she can land on, in sixteenths. 2 = eighth notes.
@@ -58,19 +68,39 @@ export const ROUNDS = [
     id: 'r2', label: 'Hats', full: 'Hats & Cowbell', sustains: false, click: false,
     lanes: [{ voice: 'hat', name: 'HAT' }, { voice: 'cowbell', name: 'BELL' }],
   },
-  // The degrees below index into the MINOR PENTATONIC: 0 root, 1 flat third,
-  // 2 fourth, 3 fifth, 4 flat seventh. Every pair of those is consonant, which
-  // is what will let her press two at once and never hear a mistake
-  // (dec:pentatonic-for-chords).
+  // FOUR LANES ON THE PITCHED ROUNDS, two under each thumb. Two notes is enough
+  // for a bass line only in the sense that two notes is enough for a doorbell.
+  //
+  // This is not a return to the four-key layout that was superseded: those were
+  // four different INSTRUMENTS, which is four decisions taken while also
+  // deciding when. These are four positions on one instrument, which is a single
+  // decision — which pitch — and is how every real instrument already works.
+  //
+  // Degrees index the MINOR PENTATONIC: 0 root, 1 flat third, 2 fourth,
+  // 3 fifth, 4 flat seventh, 5 the octave. Every pair of them is consonant, so
+  // any two she presses together sound deliberate (dec:pentatonic-for-chords).
   {
     id: 'r3', label: '808', full: 'The 808', sustains: true, click: false,
-    // Root and fifth — the two notes most bass lines are actually made of.
-    lanes: [{ voice: 'bass', degree: 0, name: 'LOW' }, { voice: 'bass', degree: 3, name: 'HIGH' }],
+    // Root, fourth, fifth, flat seventh — the vocabulary of almost every bass
+    // line ever written, with the root under her outside thumb where it belongs.
+    lanes: [
+      { voice: 'bass', degree: 0, name: 'ROOT' },
+      { voice: 'bass', degree: 2, name: '4th' },
+      { voice: 'bass', degree: 3, name: '5th' },
+      { voice: 'bass', degree: 4, name: '♭7' },
+    ],
   },
   {
     id: 'r4', label: 'Melody', full: 'The Melody', sustains: true, click: false,
-    // Root and flat third — the minor third is the phonk interval.
-    lanes: [{ voice: 'lead', degree: 0, name: 'ONE' }, { voice: 'lead', degree: 1, name: 'TWO' }],
+    // The minor triad plus the octave: root, flat third, fifth, root again an
+    // octave up. Any subset of that is a chord, and it spans far enough to be
+    // an actual tune rather than two notes alternating.
+    lanes: [
+      { voice: 'lead', degree: 0, name: 'ROOT' },
+      { voice: 'lead', degree: 1, name: '♭3' },
+      { voice: 'lead', degree: 3, name: '5th' },
+      { voice: 'lead', degree: 5, name: '8ve' },
+    ],
   },
 ];
 
@@ -80,7 +110,7 @@ export class Track {
   /** @param {{bars?: number}} opts */
   constructor({ bars = 2 } = {}) {
     this.bars = bars;
-    /** events[roundId] = Set of "slot*LANES + lane". A Set so a double tap on
+    /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
     /** Which rounds she has accepted with STOP. Only these play back. */
@@ -101,7 +131,7 @@ export class Track {
    */
   record(roundId, lane, atStep) {
     const slot = ((quantise(atStep) % this.loopSteps) + this.loopSteps) % this.loopSteps;
-    this.events[roundId]?.add(slot * LANES + lane);
+    this.events[roundId]?.add(slot * LANE_STRIDE + lane);
     return slot;
   }
 
@@ -109,21 +139,21 @@ export class Track {
    *  on the wrong beat and sounds like a timing bug. */
   erase(roundId, lane, slot) {
     if (slot < 0 || slot >= this.loopSteps) throw new RangeError(`step ${slot} outside loop`);
-    this.events[roundId]?.delete(slot * LANES + lane);
+    this.events[roundId]?.delete(slot * LANE_STRIDE + lane);
   }
 
   lanesAt(roundId, slot) {
     const out = [];
     const set = this.events[roundId];
     if (!set) return out;
-    for (let lane = 0; lane < LANES; lane++) if (set.has(slot * LANES + lane)) out.push(lane);
+    for (let lane = 0; lane < laneCount(roundId); lane++) if (set.has(slot * LANE_STRIDE + lane)) out.push(lane);
     return out;
   }
 
   notes(roundId) {
     const out = [];
     for (const v of this.events[roundId] ?? []) {
-      out.push({ slot: Math.floor(v / LANES), lane: v % LANES });
+      out.push({ slot: Math.floor(v / LANE_STRIDE), lane: v % LANE_STRIDE });
     }
     return out;
   }
@@ -146,11 +176,11 @@ export class Track {
       return out;
     }
 
-    for (let lane = 0; lane < LANES; lane++) {
+    for (let lane = 0; lane < laneCount(roundId); lane++) {
       let start = null;
       let last = null;
       for (let slot = 0; slot < this.loopSteps; slot += GRID) {
-        if (set.has(slot * LANES + lane)) {
+        if (set.has(slot * LANE_STRIDE + lane)) {
           if (start === null) start = slot;
           last = slot;
         } else if (start !== null) {
@@ -169,18 +199,18 @@ export class Track {
    */
   isRunStart(roundId, lane, slot) {
     const set = this.events[roundId];
-    if (!set || !set.has(slot * LANES + lane)) return false;
+    if (!set || !set.has(slot * LANE_STRIDE + lane)) return false;
     if (!roundById(roundId)?.sustains) return true;
 
     // A lane held the whole way round has no gap to start after, so give it one
     // — otherwise it is occupied everywhere and sounds nowhere.
     const filled = this.loopSteps / GRID;
     let n = 0;
-    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * LANES + lane)) n++;
+    for (let s = 0; s < this.loopSteps; s += GRID) if (set.has(s * LANE_STRIDE + lane)) n++;
     if (n === filled) return slot === 0;
 
     const prev = ((slot - GRID) % this.loopSteps + this.loopSteps) % this.loopSteps;
-    return !set.has(prev * LANES + lane);
+    return !set.has(prev * LANE_STRIDE + lane);
   }
 
   count(roundId) {

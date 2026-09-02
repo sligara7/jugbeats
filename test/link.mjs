@@ -6,7 +6,7 @@
 // sitting in someone's chat, and nothing else in the design would notice if it
 // stopped working. iface:track-format is the one PUBLISHED boundary here.
 
-import { Track, ROUNDS, LANES } from '../js/track.js';
+import { Track, ROUNDS, LANE_STRIDE, laneCount } from '../js/track.js';
 
 // The codec is browser code and reaches for btoa/atob. Supply them rather than
 // changing the shipping code to suit a test.
@@ -65,7 +65,7 @@ console.log('\nthe link is short enough to paste into a chat');
   const full = new Track({ bars: 2 });
   for (const r of ROUNDS) {
     for (let s = 0; s < full.loopSteps; s += 2) {
-      for (let n = 0; n < LANES; n++) full.record(r.id, n, s);
+      for (let n = 0; n < laneCount(r.id); n++) full.record(r.id, n, s);
     }
   }
   const sparse = new Track({ bars: 2 });
@@ -107,9 +107,17 @@ console.log('\nevery version we have ever shipped still decodes');
     {
       version: 1,
       note: 'four-bar beat with 808 and melody, from the four-lane era',
+      bars: 4,
       encoded:
         'AQQFAAQABgAMAAUABAAGAAQABQAEAAYADAAFAAQABgAEAAEAAAAAAAAAAAABAAAAAAABAAAA' +
         'AgAAAAAAAAAAAAAAAAAAAAAAAAABAAAACAAAAAAAAAAAAAAAAQAAAAAAAABAgICAgICAgA',
+    },
+    {
+      version: 2,
+      note: 'two-bar loop-pedal track at 96bpm, from the two-lane era',
+      bars: 2,
+      bpm: 96,
+      encoded: 'AgJgAAEAAgEBAAIBASEBAQEhAQERASAAEQAgAAAAAQAAAQAAD4CAgICAgICA',
     },
   ];
 
@@ -118,24 +126,50 @@ console.log('\nevery version we have ever shipped still decodes');
     check(`v${c.version} still decodes: ${c.note}`, t !== null && !t.isEmpty());
     if (!t) continue;
 
-    // The game's shape changed underneath v1, so decoding is a MIGRATION: the
-    // four old drum lanes split across the first two rounds.
     check('  kick and snare land in round one', t.count('r1') > 0, `${t.count('r1')} notes`);
     check('  hats and cowbell land in round two', t.count('r2') > 0, `${t.count('r2')} notes`);
     check('  the 808 lands in round three', t.count('r3') > 0, `${t.count('r3')} notes`);
     check('  the melody lands in round four', t.count('r4') > 0, `${t.count('r4')} notes`);
 
-    // v1 tracks were four bars. Keeping that rather than forcing today's two is
-    // the difference between replaying her music and cropping it in half.
-    check('  its original length is kept, not cropped', t.bars === 4, `${t.bars} bars`);
+    // Its original length is kept rather than forced to today's default. That is
+    // the difference between replaying her music and cropping it.
+    check('  its own length is kept, not forced', t.bars === c.bars, `${t.bars} bars`);
 
-    // v1 knew nothing about accepting a round: a shared track arrived finished.
-    check('  everything in it counts as finished',
-      ROUNDS.every((r) => t.count(r.id) === 0 || t.accepted.has(r.id)));
+    check('  every note sits on a lane the round still has',
+      t.notes(ROUNDS[0].id).every((n) => n.lane < laneCount('r1')) &&
+      t.notes(ROUNDS[2].id).every((n) => n.lane < laneCount('r3')));
 
-    check('  it plays at a sensible tempo though v1 stored none',
-      t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
+    check('  it plays at a sensible tempo', t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
+    if (c.bpm) check('  at exactly the tempo it was made at', t.bpm === c.bpm);
   }
+
+  // v1 lost notes under v2, because the pitched rounds only had two lanes then
+  // and an old melody had four. Widening to four closed that hole, and this is
+  // the assertion that says so rather than the comment.
+  const v1 = decode(CORPUS[0].encoded);
+  check('a v1 melody now carries across whole, with nothing dropped',
+    v1.notes('r4').some((n) => n.lane >= 2),
+    `lanes present: ${[...new Set(v1.notes('r4').map((n) => n.lane))].sort().join(', ')}`);
+}
+
+console.log('\nchords survive the round trip');
+
+{
+  // Two notes in the same slot IS a chord — the grid gives it away free, so
+  // there is nothing special to encode. This asserts nothing quietly drops one.
+  const t = new Track({ bars: 2 });
+  t.record('r4', 0, 8);
+  t.record('r4', 2, 8); // root and fifth, together
+  t.record('r3', 0, 0);
+  t.record('r3', 3, 0); // root and flat seventh, together
+
+  const back = decode(encode(t));
+  check('both notes of a melody chord come back',
+    back.lanesAt('r4', 8).length === 2, `${back.lanesAt('r4', 8).length} notes`);
+  check('both notes of an 808 chord come back',
+    back.lanesAt('r3', 0).length === 2, `${back.lanesAt('r3', 0).length} notes`);
+  check('and they are the same two notes',
+    back.lanesAt('r4', 8).join(',') === '0,2' && back.lanesAt('r3', 0).join(',') === '0,3');
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);

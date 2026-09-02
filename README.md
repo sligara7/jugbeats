@@ -23,15 +23,22 @@ playing into silence. Then play a kick and a snare for as long as you like.
 **Press STOP to keep it, or ↺ to throw it away and go again.** What you keep
 starts looping, and the click retires — from here your own beat is the click.
 
-**Then the next two sounds over the top.** Hats and cowbell, then the 808, then
-the melody. Two at a time, one per thumb, each round playing over everything
-you kept before it.
+**Then the next sounds over the top.** Hats and cowbell, then the 808, then the
+melody — each round playing over everything you kept before it.
+
+The drum rounds give you one sound per thumb. The 808 and melody give you
+**two notes per thumb**, and pressing two together makes a chord. That is not a
+return to four keys: four drums were four instruments to choose between, four
+notes are four positions on one instrument, which is how every real instrument
+already works.
 
 That is the whole of the teaching: nobody tells you a track is drums plus bass
 plus melody. You hear it get fuller because you filled it.
 
-The pitched lanes are locked to a minor scale, and the drone sounds its root —
-so there is no wrong note, and you can hear why.
+The pitched lanes are locked to the **minor pentatonic**, and the drone sounds
+its root. Every pair of notes in that scale is consonant, so there is no wrong
+note even when you press two at once — and the drone is why you can *hear* that
+rather than just be protected by it.
 
 ## How it is built
 
@@ -74,11 +81,12 @@ python3 forge/preview.py      # render the chat preview card
 node test/timing.mjs          # the beat does not drift
 node test/link.mjs            # old links still play
 node test/session.mjs         # the loop pedal behaves like a loop pedal
+node test/scale.mjs           # no two notes she can reach can clash
 
 python3 -m http.server 8137   # then open http://localhost:8137
 ```
 
-On a desktop the two lanes are **F** and **J**.
+On a desktop the lanes are **F J** on the drums, **D F J K** when there are four.
 
 The files in `kit/` are generated but committed, because GitHub Pages serves
 the repository as-is with no build step. `js/dsp.js` is the source of truth;

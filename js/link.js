@@ -8,10 +8,10 @@
 // Governed by dec:track-in-the-url: the track travels inside the link, so there
 // is no server, no database and no account anywhere in this game.
 
-import { Track, ROUNDS, LANES, STEPS_PER_BAR } from './track.js';
+import { Track, ROUNDS, LANE_STRIDE, STEPS_PER_BAR } from './track.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
-const VERSION = 2;
+const VERSION = 3;
 
 const CONTROLS = ['deeper', 'punchier', 'dirtier', 'longer'];
 const SHAPED = ['bass', 'lead'];
@@ -35,19 +35,20 @@ function fromB64Url(str) {
 }
 
 // ---------------------------------------------------------------------------
-// v2 — four rounds of two lanes, plus her tempo
+// v3 — four rounds, up to four lanes each, plus her tempo
 //
 // A fixed-size bitfield per round, because it is constant-size: the URL for a
 // track she has filled completely is exactly as long as one with two notes in
 // it, so a link can never grow past what a chat app will carry.
 //
-// New in v2 over v1: two lanes per round instead of four per layer, a fourth
-// round, which rounds she has ACCEPTED, and HER TEMPO — which now belongs to
-// the track, because she tapped it and it is as much hers as the notes are.
+// New in v3 over v2: the pitched rounds have FOUR lanes rather than two, two
+// under each thumb, so she can play a real bass line and press two notes
+// together as a chord. Every round packs at the same stride whatever it
+// actually uses, which keeps one code path and one format.
 // ---------------------------------------------------------------------------
 
-function encodeV2(track) {
-  const bytesPerRound = Math.ceil((track.loopSteps * LANES) / 8);
+function encodeV3(track) {
+  const bytesPerRound = Math.ceil((track.loopSteps * LANE_STRIDE) / 8);
   const out = new Uint8Array(
     4 + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
   );
@@ -60,7 +61,7 @@ function encodeV2(track) {
 
   for (const round of ROUNDS) {
     for (const { slot, lane } of track.notes(round.id)) {
-      const bit = slot * LANES + lane;
+      const bit = slot * LANE_STRIDE + lane;
       out[p + (bit >> 3)] |= 1 << (bit & 7);
     }
     p += bytesPerRound;
@@ -81,6 +82,48 @@ function encodeV2(track) {
   return out;
 }
 
+function decodeV3(bytes) {
+  let p = 1;
+  const bars = bytes[p++] || 2;
+  const bpm = bytes[p++] || 100;
+  p++; // reserved
+
+  const track = new Track({ bars });
+  track.bpm = bpm;
+  const bytesPerRound = Math.ceil((track.loopSteps * LANE_STRIDE) / 8);
+
+  for (const round of ROUNDS) {
+    for (let bit = 0; bit < track.loopSteps * LANE_STRIDE; bit++) {
+      if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
+    }
+    p += bytesPerRound;
+  }
+
+  const acceptedBits = bytes[p++] ?? 0;
+  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+
+  for (const inst of SHAPED) {
+    track.shaping[inst] = {};
+    for (const c of CONTROLS) {
+      const b = bytes[p++];
+      if (b !== undefined) track.shaping[inst][c] = b / 255;
+    }
+  }
+  return track;
+}
+
+
+// ---------------------------------------------------------------------------
+// v2 — four rounds of TWO lanes each
+//
+// KEPT FOREVER. Short-lived as a shipped format, but the rule is the rule: a
+// version number is a promise, and promises do not get withdrawn because the
+// window was narrow. Decoding is a widening — the two old lanes keep their
+// positions, and the two new ones on the pitched rounds are simply empty.
+// ---------------------------------------------------------------------------
+
+const V2_LANES = 2;
+
 function decodeV2(bytes) {
   let p = 1;
   const bars = bytes[p++] || 2;
@@ -89,11 +132,14 @@ function decodeV2(bytes) {
 
   const track = new Track({ bars });
   track.bpm = bpm;
-  const bytesPerRound = Math.ceil((track.loopSteps * LANES) / 8);
+  const bytesPerRound = Math.ceil((track.loopSteps * V2_LANES) / 8);
 
   for (const round of ROUNDS) {
-    for (let bit = 0; bit < track.loopSteps * LANES; bit++) {
-      if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
+    for (let bit = 0; bit < track.loopSteps * V2_LANES; bit++) {
+      if (!(bytes[p + (bit >> 3)] & (1 << (bit & 7)))) continue;
+      const slot = Math.floor(bit / V2_LANES);
+      const lane = bit % V2_LANES;
+      track.events[round.id].add(slot * LANE_STRIDE + lane);
     }
     p += bytesPerRound;
   }
@@ -117,19 +163,28 @@ function decodeV2(bytes) {
 // KEPT FOREVER. Links in this format are sitting in real chats, and the promise
 // that they still play is the whole reason the format carries a version marker.
 // The game's shape changed underneath them, so decoding is a MIGRATION rather
-// than a read: four drum lanes become two rounds of two, and the two pitched
-// layers keep their first two lanes each.
+// than a read: the four drum lanes split across the first two rounds, and the
+// pitched layers carry across whole.
 // ---------------------------------------------------------------------------
 
 const V1_LAYERS = ['drums', 'bass', 'lead'];
 const V1_LANES = 4;
 
-/** Where each v1 (layer, lane) ends up in v2. Lanes 2 and 3 of the old drum
- *  layer were hat and cowbell, which are exactly round two. */
+/**
+ * Where each v1 (layer, lane) ends up now.
+ *
+ * The old drum layer's lanes 2 and 3 were hat and cowbell, which are exactly
+ * round two — so the four drum lanes split cleanly across the first two rounds.
+ *
+ * The pitched layers now map WHOLE. Under v2 the pitched rounds had only two
+ * lanes, so lanes 2 and 3 of an old melody had nowhere to go and were dropped —
+ * an honest loss, but a loss. Widening the pitched rounds to four lanes closes
+ * that hole: a v1 link decoded today keeps every note it was written with.
+ */
 function v1Destination(layer, lane) {
   if (layer === 'drums') return lane < 2 ? { round: 'r1', lane } : { round: 'r2', lane: lane - 2 };
-  if (layer === 'bass') return lane < 2 ? { round: 'r3', lane } : null;
-  if (layer === 'lead') return lane < 2 ? { round: 'r4', lane } : null;
+  if (layer === 'bass') return { round: 'r3', lane };
+  if (layer === 'lead') return { round: 'r4', lane };
   return null;
 }
 
@@ -148,10 +203,7 @@ function decodeV1(bytes) {
       if (!(bytes[p + (bit >> 3)] & (1 << (bit & 7)))) continue;
       const slot = Math.floor(bit / V1_LANES);
       const dest = v1Destination(layer, bit % V1_LANES);
-      // Lanes 2 and 3 of the old pitched layers have nowhere to go. Dropping
-      // them loses two notes of a melody; inventing a home for them would
-      // change what she wrote. Losing them is the honest failure.
-      if (dest) track.events[dest.round].add(slot * LANES + dest.lane);
+      if (dest) track.events[dest.round].add(slot * LANE_STRIDE + dest.lane);
     }
     p += bytesPerLayer;
   }
@@ -172,14 +224,14 @@ function decodeV1(bytes) {
 }
 
 /** Every decoder we have ever shipped, keyed by version. Nothing leaves. */
-const DECODERS = { 1: decodeV1, 2: decodeV2 };
+const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3 };
 
 // ---------------------------------------------------------------------------
 // The boundary
 // ---------------------------------------------------------------------------
 
 export function encode(track) {
-  return toB64Url(encodeV2(track));
+  return toB64Url(encodeV3(track));
 }
 
 /**
@@ -234,4 +286,4 @@ export async function share(track, { title = 'Listen to my beat' } = {}) {
   }
 }
 
-export const _internal = { encodeV2, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
+export const _internal = { encodeV3, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
