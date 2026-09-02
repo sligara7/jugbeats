@@ -207,8 +207,17 @@ clock.onSchedule((from, to, timeOf) => {
 // The transport. One big button in the middle, where neither thumb rests.
 // ---------------------------------------------------------------------------
 
+/**
+ * What the big button says right now.
+ *
+ * It used to say STOP while recording, and the owner's objection was exact: it
+ * does not stop anything. It keeps the round and moves her to the next one, and
+ * the music carries on either way. PAUSE is the thing that stops, and two
+ * buttons saying stop while meaning different things is how a child learns to
+ * trust neither.
+ */
 function transportLabel() {
-  if (session.state === 'recording') return 'STOP';
+  if (session.state === 'recording') return 'NEXT ▸';
   if (session.state === 'counting') return '…';
   if (session.state === 'done') return 'DONE';
   if (!session.tempoIsSet) return `TAP ${session.tapsSoFar}/4`;
@@ -456,7 +465,7 @@ session.onNudge((n) => {
     case 'round-kept':
       // The click retires here: from now on her own beat is the click.
       if (ROUNDS[n.index]?.click) voices.setClickLevel(0, 1.2);
-      flash('kept');
+      flash('kept — it keeps playing underneath');
       break;
     case 'next-round':
       flash(`now the ${session.round.full.toLowerCase()} — have a play first, nothing is kept`);
