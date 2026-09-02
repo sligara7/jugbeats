@@ -291,6 +291,10 @@ body.portrait .rotate { display: grid; }
 .help:active { background: rgba(255, 255, 255, 0.2); color: var(--ink); }
 
 .panel {
+  /* Shown by a CLASS, not by the hidden attribute. `hidden` depends on the user
+     agent stylesheet's display:none, which any author display rule silently
+     beats — too fragile for the one screen she must always be able to leave. */
+  display: none;
   position: fixed;
   inset: 0;
   background: rgba(6, 4, 10, 0.96);
@@ -301,6 +305,7 @@ body.portrait .rotate { display: grid; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+.panel.open { display: block; }
 
 /* Top-aligned, never centred. Centring a panel taller than the viewport pushes
    its head off the top, where no amount of scrolling reaches it. */

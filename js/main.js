@@ -465,29 +465,72 @@ function diagnostics() {
   return bits.join(' · ');
 }
 
-el('help').addEventListener('click', (e) => {
-  e.stopPropagation();
-  el('diag').textContent = diagnostics();
-  el('silentpanel').hidden = false;
-});
-
-function closePanel(e) {
-  e?.stopPropagation();
-  el('silentpanel').hidden = true;
+/**
+ * Show and hide the panel with an INLINE STYLE, not with the `hidden`
+ * attribute and not by a class alone.
+ *
+ * THE CAUSE THIS IS ANSWERING. Visibility was expressed twice by two mechanisms
+ * that could not see each other: JavaScript set the `hidden` attribute, and the
+ * stylesheet independently declared `display: grid` on the same element. An
+ * author display rule beats the user agent's `[hidden] { display: none }`, so
+ * the hide silently lost — measured, not assumed: hidden=true, computed display
+ * still grid.
+ *
+ * It was worse than a stuck close button. Because `hidden` never worked, the
+ * panel was on screen from page load. A nine-year-old did not open a help
+ * screen and get trapped; she was handed one and could not get rid of it.
+ *
+ * An inline style is used rather than a class because the failure survives a
+ * STALE STYLESHEET. The html, css and js are cached independently for ten
+ * minutes each, so a phone can run any mixture of builds — and it did: new
+ * markup with the old stylesheet is exactly the combination that was broken.
+ * Inline beats any stylesheet, fresh or stale, so this cannot be undone by a
+ * file that has not arrived yet.
+ */
+function showPanel(show) {
+  const p = el('silentpanel');
+  p.style.display = show ? 'block' : 'none';
+  p.classList.toggle('open', show);
+  p.hidden = !show;
 }
 
-el('closepanel').addEventListener('click', closePanel);
+function openPanel(e) {
+  e?.stopPropagation();
+  el('diag').textContent = diagnostics();
+  showPanel(true);
+}
+el('help').addEventListener('click', openPanel);
 
-// Tapping the backdrop closes it too. She got stuck on this screen once, and a
-// help panel with exactly one way out is a trap — especially one she reached by
-// accident.
-el('silentpanel').addEventListener('click', (e) => {
-  if (e.target === el('silentpanel')) closePanel(e);
-});
+function closePanel(e) {
+  e?.preventDefault();
+  e?.stopPropagation();
+  showPanel(false);
+}
 
-// And the hardware back gesture, which on a phone is the reflex.
+/**
+ * TAP ANYWHERE TO LEAVE, except the one button that does something else.
+ *
+ * She got stuck on this screen twice. The first time the exit was off the
+ * bottom of a landscape phone; the second time the exit was visible and a tap
+ * on it did nothing, for a reason I could not reproduce from here. So the exit
+ * stopped being a target: the whole screen is now the way out, listening on
+ * pointerup AND click because whichever of those was failing, both failing is
+ * far less likely than one.
+ *
+ * A help screen a child opened by accident must be impossible to be trapped in.
+ * That is worth more than knowing precisely which event was being swallowed.
+ */
+function maybeClose(e) {
+  if (e.target.closest('#retry')) return; // the one thing that is not "leave"
+  closePanel(e);
+}
+for (const type of ['pointerup', 'click']) {
+  el('silentpanel').addEventListener(type, maybeClose);
+}
+
+// And the keyboard reflex, for testing on a laptop.
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !el('silentpanel').hidden) closePanel(e);
+  if (e.key === 'Escape') closePanel(e);
 });
 
 el('retry').addEventListener('click', async (e) => {
@@ -524,6 +567,9 @@ window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 
 // ---------------------------------------------------------------------------
 // Go
 // ---------------------------------------------------------------------------
+
+// Whatever stylesheet reached this device, the panel starts shut.
+showPanel(false);
 
 checkOrientation();
 stage.mount(track);
