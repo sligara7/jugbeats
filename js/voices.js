@@ -16,7 +16,7 @@
 // This part never reads her track and never reads the screen.
 
 import {
-  render808, renderLead, renderClick, renderPad, degreeToHz, SCALE_STEPS, NEUTRAL,
+  render808, renderLead, renderClick, renderPad, degreeToHz, SCALE_STEPS, PROGRESSION, NEUTRAL,
 } from './dsp.js';
 
 /** Degrees we pre-render. One octave of the scale is more than four lanes need. */
@@ -172,15 +172,33 @@ export class Voices {
    */
   renderPitched() {
     const sr = this.ctx.sampleRate;
+    // THE BASS MOVES AND THE MELODY DOES NOT, which is how a band actually does
+    // this. The bass states the chord — that is what makes the harmony audible
+    // at all — while the melody stays in one scale and floats over the changes.
+    // It is why a blues player uses a single pentatonic over a whole tune, and
+    // it is what keeps every note she can press consonant against every chord.
+    //
+    // Transposing the melody too would give each chord its own parallel
+    // pentatonic, which wanders outside the key: shifting C minor pentatonic up
+    // to the flat sixth introduces a note the key does not contain, and the
+    // drone holding the root underneath would be arguing with it.
+    for (let chord = 0; chord < PROGRESSION.length; chord++) {
+      const shift = Math.pow(2, PROGRESSION[chord] / 12);
+      for (const degree of DEGREES) {
+        this.pitched.set(
+          `bass:${degree}:${chord}`,
+          toBuffer(this.ctx, render808(sr, degreeToHz(degree) * shift, this.shaping.bass), sr)
+        );
+      }
+    }
     for (const degree of DEGREES) {
-      this.pitched.set(
-        `bass:${degree}`,
-        toBuffer(this.ctx, render808(sr, degreeToHz(degree), this.shaping.bass), sr)
+      const buf = toBuffer(
+        this.ctx, renderLead(sr, degreeToHz(degree, LEAD_OCTAVES), this.shaping.lead), sr
       );
-      this.pitched.set(
-        `lead:${degree}`,
-        toBuffer(this.ctx, renderLead(sr, degreeToHz(degree, LEAD_OCTAVES), this.shaping.lead), sr)
-      );
+      // One buffer, keyed under every chord, so the lookup stays uniform.
+      for (let chord = 0; chord < PROGRESSION.length; chord++) {
+        this.pitched.set(`lead:${degree}:${chord}`, buf);
+      }
     }
   }
 
@@ -199,13 +217,17 @@ export class Voices {
    * so there is no awaiting and no lazy loading here.
    *
    * @param {string} voice  'kick' | 'snare' | ... | 'bass' | 'lead'
-   * @param {{degree?: number, time?: number, gain?: number}} opts
+   * @param {{degree?: number, time?: number, gain?: number, chord?: number}} opts
+   *   chord — which chord of the progression is sounding. Drums ignore it; a
+   *   kick does not transpose.
    */
-  play(voice, { degree = 0, time, gain = 1 } = {}) {
+  play(voice, { degree = 0, time, gain = 1, chord = 0 } = {}) {
     const at = time ?? this.ctx.currentTime;
+    const n = DEGREES.length;
+    const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
     const buf =
       this.drums.get(voice) ??
-      this.pitched.get(`${voice}:${((degree % DEGREES.length) + DEGREES.length) % DEGREES.length}`);
+      this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}`);
     if (!buf) return;
 
     const src = this.ctx.createBufferSource();

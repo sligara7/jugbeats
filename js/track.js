@@ -9,7 +9,26 @@
 // and by dec:one-clock, since recording happens after the
 // sound has already played, never between her thumb and her ear.
 
+import { PROGRESSION } from './dsp.js';
+
 export const STEPS_PER_BAR = 16;
+
+export { PROGRESSION };
+
+/**
+ * Which chord is sounding at an absolute step.
+ *
+ * Keyed to ABSOLUTE time rather than to any round's loop, because the
+ * progression belongs to the piece rather than to a layer. That has a lovely
+ * consequence once rounds are different lengths: a three-bar bass under a
+ * four-bar progression plays the same recorded note over a different chord each
+ * time round, so one phrase keeps meaning something new. The pentatonic is what
+ * makes that safe rather than lucky.
+ */
+export function chordAt(absStep) {
+  const bar = Math.floor(absStep / STEPS_PER_BAR);
+  return ((bar % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
+}
 
 /**
  * The most lanes any round has. Used as a fixed STRIDE when packing notes, so

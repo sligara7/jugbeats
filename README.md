@@ -44,6 +44,11 @@ already works.
 That is the whole of the teaching: nobody tells you a track is drums plus bass
 plus melody. You hear it get fuller because you filled it.
 
+**The chords move on their own** — i, ♭VI, ♭VII, i, one per bar. The 808 follows
+them; the melody stays in one scale and floats over the top, which is how a band
+does it and why every note still fits. You never have to know a chord is
+happening.
+
 The pitched lanes are locked to the **minor pentatonic**, and the drone sounds
 its root. Every pair of notes in that scale is consonant, so there is no wrong
 note even when you press two at once — and the drone is why you can *hear* that

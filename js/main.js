@@ -10,7 +10,7 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, ROUNDS, GRID, quantise } from './track.js';
+import { Track, ROUNDS, GRID, quantise, chordAt } from './track.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share } from './link.js';
@@ -63,12 +63,14 @@ function onHit(lane) {
   const { voice, degree } = voiceFor(round, lane);
 
   // 1. Sound. Now, with no time argument, so it goes at the earliest moment the
-  //    audio thread will take it.
-  voices.play(voice, { degree });
+  //    audio thread will take it — transposed to whatever chord is sounding, so
+  //    what she plays live is what gets recorded.
+  const now = clock.now();
+  voices.play(voice, { degree, chord: chordAt(now ?? 0) });
 
   // 2. Recording, afterwards — and only while she is actually recording.
   if (!session.recording) return;
-  const at = clock.now();
+  const at = now;
   if (at === null) return;
   track.record(round.id, lane, at);
 
@@ -144,7 +146,10 @@ clock.onSchedule((from, to, timeOf) => {
         if (alreadySounded.delete(key)) continue;
         const { voice, degree } = voiceFor(round, lane);
         const gain = round.id === session.round.id ? 1 : 0.8;
-        voices.play(voice, { degree, time: timeOf(step), gain });
+        // The chord comes from ABSOLUTE time, not from where the note sits in
+        // its own loop — so a short round replays the same phrase over a
+        // different chord each time round.
+        voices.play(voice, { degree, time: timeOf(step), gain, chord: chordAt(step) });
       }
     }
   }
@@ -314,7 +319,7 @@ session.onNudge((n) => {
   switch (n.kind) {
     case 'tempo-set':
       clock.setTempo(track.bpm);
-      flash(`${track.bpm} — that's your speed`);
+      flash(`${track.bpm} — that's your speed. have a play; nothing is kept yet`);
       break;
     case 'counting-in':
       voices.setClickLevel(0.9, 0.15);
@@ -322,17 +327,22 @@ session.onNudge((n) => {
     case 'recording':
       flash(`play the ${session.round.full.toLowerCase()}`);
       break;
+    case 'free':
+      // The state she was asking for a pause button to reach. It has always
+      // been the default between rounds; nothing ever said so.
+      flash('have a play — nothing is kept until you press start');
+      break;
     case 'round-kept':
       // The click retires here: from now on her own beat is the click.
       if (ROUNDS[n.index]?.click) voices.setClickLevel(0, 1.2);
       flash('kept');
       break;
     case 'next-round':
-      flash(`now the ${session.round.full.toLowerCase()}`);
+      flash(`now the ${session.round.full.toLowerCase()} — have a play first, nothing is kept`);
       break;
     case 'round-reset': flash('cleared — go again'); break;
     case 'tempo-cleared': flash('tap the keys four times for a new speed'); break;
-    case 'round-changed': flash(`back on the ${session.round.full.toLowerCase()}`); break;
+    case 'round-changed': flash(`back on the ${session.round.full.toLowerCase()} — nothing is kept until you press start`); break;
     case 'nothing-to-keep': flash('play something first'); break;
     case 'all-done': flash('you made a whole track'); break;
     default: break;

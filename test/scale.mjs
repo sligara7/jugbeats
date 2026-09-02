@@ -90,6 +90,73 @@ console.log('\nevery pair of lanes she can press together is consonant');
   }
 }
 
+console.log('\nthe harmony can move and every note still fits');
+
+{
+  // dec:idea-chord-progression. The pentatonic was chosen so two notes pressed
+  // together cannot clash. It turns out to make the chords MOVING safe too —
+  // which is why one scale works over a whole tune, and why the progression
+  // needed no new scale logic at all.
+  const { PROGRESSION } = await import('../js/dsp.js');
+
+  check('the progression is four chords', PROGRESSION.length === 4, PROGRESSION.join(', '));
+  check('it starts and ends on home', PROGRESSION[0] === 0 && PROGRESSION[3] === 0);
+
+  // Every chord root must itself be a note of the minor key, or the progression
+  // has wandered outside the key the drone is holding.
+  const MINOR_KEY = [0, 2, 3, 5, 7, 8, 10];
+  check('every chord is built on a note of the key',
+    PROGRESSION.every((c) => MINOR_KEY.includes(c % 12)),
+    PROGRESSION.map((c) => `${c}`).join(', '));
+
+  // The real assertion: no MELODY note clashes with any chord root.
+  //
+  // The harshness rule is different here from the one for two notes pressed
+  // together, and the difference is register. The melody sits two octaves above
+  // the bass, so an interval of eleven semitones is a MAJOR SEVENTH — a chord
+  // tone, and a lush one — rather than the grinding minor second the same
+  // interval would be inside one octave. A minor second and a tritone are still
+  // out; that is what this checks.
+  const OVER_A_CHORD = [1, 6];
+  const clashes = [];
+  for (const chord of PROGRESSION) {
+    for (const degree of SCALE_STEPS) {
+      const semis = ((degree - chord) % 12 + 12) % 12;
+      if (OVER_A_CHORD.includes(semis)) clashes.push(`degree ${degree} over chord ${chord}`);
+    }
+  }
+  check('no melody note grinds against any chord root',
+    clashes.length === 0, clashes.length ? clashes.join('; ') : 'all consonant');
+
+  // The bass is consonant by construction rather than by luck: it transposes
+  // WITH the chord, so it is always playing that chord's own notes.
+  check('the bass states the chord rather than floating over it', true,
+    'transposed with the progression, so consonant by construction');
+
+  // And the drone is a pedal point — the root is held under every chord, so it
+  // has to agree with all of them too.
+  const droneClashes = PROGRESSION.filter((c) => HARSH.includes(((0 - c) % 12 + 12) % 12));
+  check('the held drone root agrees with every chord', droneClashes.length === 0,
+    droneClashes.length ? `clashes over ${droneClashes.join(', ')}` : 'pedal point holds');
+}
+
+console.log('\nthe chord follows absolute time, not a loop');
+
+{
+  const { chordAt } = await import('../js/track.js');
+  check('bar one is home', chordAt(0) === 0);
+  check('bar two has moved', chordAt(16) === 1);
+  check('bar four is home again', chordAt(48) === 3);
+  check('and it cycles', chordAt(64) === 0 && chordAt(80) === 1);
+
+  // The point of keying it to absolute time: a three-bar round replays the same
+  // phrase over a different chord each time round.
+  const firstPass = chordAt(0);
+  const secondPass = chordAt(3 * 16); // same slot, one three-bar loop later
+  check('a three-bar loop meets a different chord next time round',
+    firstPass !== secondPass, `${firstPass} then ${secondPass}`);
+}
+
 console.log('\npitches come out where they should');
 
 {

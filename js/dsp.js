@@ -453,6 +453,27 @@ export function renderPad(sr, { rootHz = ROOT_HZ, seconds = 4, octaves = 2 } = {
 export const SCALE_STEPS = [0, 3, 5, 7, 10];
 export const SCALE_NAME = 'minor pentatonic';
 
+/**
+ * The chord progression, one chord per bar, in semitones above the root.
+ *
+ * i — ♭VI — ♭VII — i. About as phonk as four chords get, and the reason this
+ * exists at all is that until now the game had NO HARMONY: everything sat on one
+ * chord from start to finish, and no amount of rhythm work makes a static
+ * harmony go anywhere (dec:idea-chord-progression).
+ *
+ * IT MOVES ON ITS OWN AND SHE CHOOSES NOTHING. That is the cheapest version of
+ * the idea and most of its value: her loop stops being static without her ever
+ * having to learn what a chord is, and she hears each change before she has to
+ * play over it — which is what stepping through chords by hand could not offer.
+ *
+ * THE PENTATONIC IS WHY THIS IS SAFE. Minor pentatonic is consonant against
+ * every chord a minor key is built from — it is why a blues player uses one
+ * scale over a whole tune — so the harmony can move underneath her and every
+ * note she can press still fits. The scale lock was chosen to make chords safe
+ * and turns out to make CHANGES safe too.
+ */
+export const PROGRESSION = [0, 8, 10, 0];
+
 /** The scale natural minor used to be, kept only so a test can prove the
  *  pentatonic fixed something real rather than being an equivalent relabel. */
 export const NATURAL_MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];

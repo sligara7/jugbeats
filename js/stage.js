@@ -224,8 +224,11 @@ export class Stage {
       if (this.roundId) this._drawRuns(g, lanes, hitY, nowStep, this.roundId, 1);
     }
 
-    // The line. Brighter on the beat, so the pulse is visible even with nothing
-    // falling — which is most of round one.
+    // The line, and the clearest signal of whether anything is being kept.
+    // Solid red while recording, DASHED and pale otherwise — a dashed line reads
+    // as "not committed" without a word of explanation, and the difference
+    // between those two states is what she was asking a pause button for.
+    g.setLineDash(this.armed ? [] : [10, 9]);
     const onBeat = nowStep === null ? 0 : 1 - Math.min(1, (((nowStep % 4) + 4) % 4) / 1.2);
     g.strokeStyle = this.armed
       ? `rgba(255,61,127,${0.5 + 0.5 * onBeat})`
@@ -235,6 +238,7 @@ export class Stage {
     g.moveTo(0, hitY);
     g.lineTo(this._w, hitY);
     g.stroke();
+    g.setLineDash([]);
 
     this._drawKeys(g, keys);
     if (this.countdown !== null) this._drawCountdown(g, hitY);
