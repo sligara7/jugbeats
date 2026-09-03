@@ -295,5 +295,49 @@ console.log('\nLISTEN punches out of recording without ending anything');
   check('the new note joins the old ones', track.count('r1') === before + 1);
 }
 
+console.log('\na track somebody SENT arrives with its tempo already set');
+
+{
+  // The owner's report: to hear a track you were sent, you had to tap out a
+  // tempo four times first — a tempo the track already carried in the link.
+  const track = new Track({ bars: 4 });
+  track.bpm = 68;
+  track.record('r1', 0, 0);
+  track.record('r3', 0, 8);
+  const s = new Session(track);
+
+  check('a fresh session has no tempo yet', s.tempoIsSet === false);
+
+  s.openEverything();
+
+  check('a received track HAS its tempo', s.tempoIsSet === true);
+  check('and it is the one that was sent', track.bpm === 68);
+  check('without pretending anyone tapped', s.tapsSoFar === 0);
+  check('so it is ready to start immediately', s.begin(0) === true);
+
+  // And she must not be able to retune somebody else's finished track, because
+  // that would move notes already recorded against the old tempo.
+  const s2 = new Session(track);
+  s2.openEverything();
+  check('but she cannot retap over what she was sent', s2.canRetapTempo === false);
+}
+
+console.log('\ntempo, once set, stays set');
+
+{
+  const track = new Track({ bars: 4 });
+  const s = new Session(track);
+  for (let i = 0; i < 4; i++) s.tapTempo();
+  check('four taps set it', s.tempoIsSet === true);
+
+  s.nudgeTempo(5);
+  // This used to send her back to "TAP 0/4" with a perfectly good tempo in hand,
+  // because the flag WAS the tap count and nudging clears the taps.
+  check('nudging does not un-set it', s.tempoIsSet === true);
+
+  s.clearTempo();
+  check('but clearing does', s.tempoIsSet === false);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

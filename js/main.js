@@ -678,26 +678,60 @@ async function startAudio() {
   try { audioReport.sessionType = navigator.audioSession?.type ?? 'unsupported'; } catch { /* ignore */ }
 
   // Layer 2: real silent media, at full volume, inside the gesture.
+  //
+  // DELIBERATELY NOT AWAITED. It is a belt-and-braces trick for one platform,
+  // and its promise can sit pending forever where there is no audio device at
+  // all — which used to hold up everything after it, including starting a track
+  // somebody sent. Best-effort work should not be able to block the gate.
   try {
     const a = new Audio(SILENT_WAV);
     a.loop = true;
     a.setAttribute('playsinline', '');
-    await a.play();
     window.__mjKeepAlive = a; // hold a reference or it is collected and stops
-    audioReport.silentClip = 'playing';
+    a.play().then(
+      () => { audioReport.silentClip = 'playing'; },
+      (err) => { audioReport.silentClip = `refused (${err?.name ?? 'unknown'})`; },
+    );
   } catch (err) {
     audioReport.silentClip = `refused (${err?.name ?? 'unknown'})`;
   }
 
-  await ctx.resume();
-  audioReport.ctxState = ctx.state;
+  // Resuming CAN hang where the platform never grants audio, so it does not get
+  // to hold up the music either — the clock reads the context's own clock and
+  // the scheduler already carries a guard for waking to find it far ahead.
+  ctx.resume().then(() => { audioReport.ctxState = ctx.state; });
   voices.startDrone();
   refresh();
+}
+
+/**
+ * A TRACK SOMEBODY SENT HER JUST PLAYS.
+ *
+ * The gate says "tap to hear it", so that tap is the whole transaction — she
+ * should not then have to find START to make good on a promise the screen
+ * already made. Her own empty track still waits for START, because there is
+ * nothing to hear yet.
+ *
+ * TWO THINGS HAVE TO HAVE HAPPENED and they can finish in either order: the
+ * gate has to have been tapped, because that gesture is the only moment audio
+ * may begin (dec:beat-the-silent-switch), and the voices have to be loaded,
+ * because starting the clock into an empty voice table means the music arrives
+ * halfway through the first loop. So this is called from both and does nothing
+ * until both are true.
+ */
+let gateDismissed = false;
+function maybeAutoPlay() {
+  if (!incoming || !gateDismissed || !voices.ready || clock.running) return;
+  resumeAll();
+  flash('this is what they made you — press a key to play along');
 }
 
 el('gate').addEventListener('click', async () => {
   el('gate').classList.add('gone');
   await startAudio();
+
+  gateDismissed = true;
+  maybeAutoPlay();
 }, { once: true });
 
 // ---------------------------------------------------------------------------
@@ -856,6 +890,7 @@ voices.load().then(() => {
   }
   el('gate-label').textContent = incoming ? 'tap to hear it' : 'tap to start';
   el('gate').classList.add('loaded');
+  maybeAutoPlay();
   // Say what the first move is. The transport reads "TAP 0/4", which is only
   // obvious once you already know what it means.
   if (!incoming) setTimeout(() => flash('tap the two keys four times to set your speed'), 700);

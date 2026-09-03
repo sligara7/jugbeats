@@ -40,6 +40,16 @@ export class Session {
     this.countInEndsAtStep = 0;
 
     this._taps = [];
+    /**
+     * Whether this track HAS a tempo — which is not the same question as
+     * whether she has tapped one.
+     *
+     * It used to be derived from the tap count, and that was wrong for the one
+     * case that matters most: a track someone SENT her already has a tempo, it
+     * came inside the link. Deriving it from taps meant the receiver was asked
+     * to tap out a speed the track already knew, before it would play at all.
+     */
+    this._tempoSet = false;
     this._listeners = new Set();
   }
 
@@ -99,6 +109,7 @@ export class Session {
 
     const bpm = clamp(Math.round(60000 / median), MIN_BPM, MAX_BPM);
     this.track.bpm = bpm;
+    this._tempoSet = true;
     this._emit({ kind: 'tempo-set', bpm });
     return bpm;
   }
@@ -107,6 +118,10 @@ export class Session {
   nudgeTempo(delta) {
     this.track.bpm = clamp(this.track.bpm + delta, MIN_BPM, MAX_BPM);
     this._taps = [];
+    // Nudging does not un-set the tempo. It used to, because the flag WAS the
+    // tap count and this clears the taps — so a nudge sent her back to "TAP 0/4"
+    // with a perfectly good tempo already in hand.
+    this._tempoSet = true;
     this._emit({ kind: 'tempo-set', bpm: this.track.bpm });
     return this.track.bpm;
   }
@@ -116,7 +131,7 @@ export class Session {
   }
 
   get tempoIsSet() {
-    return this._taps.length >= TAPS_TO_SET;
+    return this._tempoSet;
   }
 
   /**
@@ -129,6 +144,7 @@ export class Session {
    */
   clearTempo() {
     this._taps = [];
+    this._tempoSet = false;
     this._emit({ kind: 'tempo-cleared' });
   }
 
@@ -238,6 +254,10 @@ export class Session {
     for (const r of ROUNDS) if (this.track.count(r.id) > 0) this.track.accept(r.id);
     this.roundIndex = 0;
     this.state = 'tempo';
+    // IT ARRIVED WITH ITS TEMPO. Whoever made this chose a speed and it travelled
+    // in the link, so asking the person they sent it to for four taps before it
+    // will play is asking them to invent something they were given.
+    this._tempoSet = true;
   }
 }
 
