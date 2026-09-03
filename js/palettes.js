@@ -21,6 +21,9 @@ import {
   renderGlassHarmonica, renderWail, renderDread, renderKnock,
   renderHauntedIdiophone, HAUNTED as HAUNTED_FEEL,
 } from './haunted.js';
+import {
+  renderString, renderBongo, renderGuira, BACHATA as BACHATA_FEEL,
+} from './bachata.js';
 
 /** Where the lead sits relative to the bass — two octaves up, out of its way. */
 const LEAD_OCTAVES = 2;
@@ -32,13 +35,17 @@ const LEAD_OCTAVES = 2;
 export const PHONK = {
   id: 0,
   key: 'phonk',
+  blurb: 'Kick, snare, hats and an 808. Dark and shuffled.',
+  accent: '#ff3d7f',
   /**
    * WHERE A TRACK IN THIS STYLE LIVES, relative to the site root.
    *
-   * Phonk's home is the ROOT and always will be, not `/beats/`: every link she
-   * has already sent is `/jugbeats/#...` and those have to keep working.
+   * Phonk moved from the root to `/beats/` when the root became an index of all
+   * the styles. Every link she has already sent is `/jugbeats/#...`, and those
+   * still work: the index reads the palette out of the hash before it renders
+   * anything and forwards to the right page, hash intact.
    */
-  home: '',
+  home: 'beats/',
   name: 'JugBeats',
   tagline: 'Turn your phone sideways, tap the blocks, make a phonk beat.',
 
@@ -76,6 +83,8 @@ export const PHONK = {
 export const CALM = {
   id: 1,
   key: 'calm',
+  blurb: 'Handpan, singing bowls and a wordless voice, in a big room.',
+  accent: '#7fd4ff',
   home: 'ethereal/',
   name: 'JugCalm',
   tagline: 'Turn your phone sideways, tap the blocks, make something peaceful.',
@@ -166,6 +175,8 @@ export const CALM = {
 export const HAUNTED = {
   id: 2,
   key: 'haunted',
+  blurb: 'A music box that has gone wrong, and a glass harmonica.',
+  accent: '#9d7bff',
   home: 'haunted/',
   name: 'JugHaunt',
   tagline: 'Turn your phone sideways, tap the blocks, make something that is not quite right.',
@@ -263,6 +274,8 @@ const DEMBOW = [0, 3, 6, 8, 11, 14];
 export const REGGAETON = {
   id: 3,
   key: 'reggaeton',
+  blurb: 'The dembow. Tap near the beat and you land on it.',
+  accent: '#ffb03d',
   home: 'reggaeton/',
   name: 'JugDembow',
   tagline: 'Turn your phone sideways, tap the blocks, and you cannot miss the beat.',
@@ -340,8 +353,85 @@ export const REGGAETON = {
 };
 
 // ---------------------------------------------------------------------------
+// Bachata — the plucked string, three ways. Id 4 forever.
+// ---------------------------------------------------------------------------
 
-export const PALETTES = [PHONK, CALM, HAUNTED, REGGAETON];
+export const BACHATA = {
+  id: 4,
+  key: 'bachata',
+  blurb: 'Requinto, güira and bongó. The guitar leads.',
+  accent: '#5ee6a8',
+  home: 'bachata/',
+  name: 'JugBachata',
+  tagline: 'Turn your phone sideways, tap the blocks, and let the guitar answer.',
+
+  bpm: BACHATA_FEEL.bpm,     // 128
+  swing: BACHATA_FEEL.swing, // 0
+  room: BACHATA_FEEL.room,   // small: these records are close and present
+  scale: MINOR_PENTATONIC,
+  scaleName: 'minor pentatonic',
+
+  /**
+   * NOTHING SUSTAINS HERE, and that is not an oversight. Every voice in this
+   * palette is struck or plucked: a string rings for as long as it rings and
+   * holding the key cannot make it longer, which is exactly the reasoning
+   * dec:drums-do-not-sustain gives for the drums. The calm palette is the
+   * opposite case — you do hold a singing bowl — and both are the same rule:
+   * sustain belongs to the instrument.
+   *
+   * NO RHYTHM LOCK EITHER. Reggaetón locks because its identity IS one pattern.
+   * Bachata's identity is the guitar, so locking the güira would take away the
+   * one thing that makes a bachata percussion part somebody's rather than the
+   * genre's.
+   */
+  rounds: [
+    {
+      id: 'r1', label: 'Ritmo', full: 'Bongó & Güira', sustains: false, click: true,
+      lanes: [{ voice: 'bongo', name: 'BONGÓ' }, { voice: 'guira', name: 'GÜIRA' }],
+    },
+    {
+      id: 'r2', label: 'Segunda', full: 'The Rhythm Guitar', sustains: false, click: false,
+      lanes: [
+        { voice: 'segunda', degree: 0, name: 'ROOT' },
+        { voice: 'segunda', degree: 3, name: '5th' },
+      ],
+    },
+    {
+      id: 'r3', label: 'Bajo', full: 'The Bass', sustains: false, click: false,
+      lanes: [
+        { voice: 'bajo', degree: 0, name: 'ROOT' },
+        { voice: 'bajo', degree: 2, name: '4th' },
+        { voice: 'bajo', degree: 3, name: '5th' },
+        { voice: 'bajo', degree: 4, name: '♭7' },
+      ],
+    },
+    {
+      id: 'r4', label: 'Requinto', full: 'The Requinto', sustains: false, click: false,
+      lanes: [
+        { voice: 'requinto', degree: 0, name: 'ROOT' },
+        { voice: 'requinto', degree: 1, name: '♭3' },
+        { voice: 'requinto', degree: 3, name: '5th' },
+        { voice: 'requinto', degree: 5, name: '8ve' },
+      ],
+    },
+  ],
+
+  kit: null,
+  pitched: {
+    bongo: { render: (sr, hz, s, o) => renderBongo(sr, s, o), octaves: 0, sampleRate: 22050, attack: 0.002 },
+    guira: { render: (sr, hz, s, o) => renderGuira(sr, s, o), octaves: 0, sampleRate: 22050, attack: 0.001 },
+    segunda: { render: (sr, hz, s, o) => renderString(sr, hz, 'segunda', s, o), octaves: 2, sampleRate: 22050, attack: 0.002 },
+    bajo: { render: (sr, hz, s, o) => renderString(sr, hz, 'bajo', s, o), octaves: 0, sampleRate: 22050, attack: 0.002 },
+    requinto: { render: (sr, hz, s, o) => renderString(sr, hz, 'requinto', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
+  },
+  // A held segunda chord, quietly, so round one is not played into silence.
+  drone: (sr) => renderString(sr, ROOT_HZ * 4, 'segunda', {}, { seconds: 4 }),
+  impulse: (sr) => impulseResponse(sr, { seconds: 2.0, ...BACHATA_FEEL.room }),
+};
+
+// ---------------------------------------------------------------------------
+
+export const PALETTES = [PHONK, CALM, HAUNTED, REGGAETON, BACHATA];
 
 /** By permanent id, for the link. Unknown ids fall back to phonk rather than
  *  failing — a link from a future build should degrade, never break. */

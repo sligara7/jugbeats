@@ -191,3 +191,111 @@ export function sawPair(detune = 1.002) {
     return (saw(p1) + saw(p2)) * 0.5;
   };
 }
+
+// ---------------------------------------------------------------------------
+// The plucked string
+// ---------------------------------------------------------------------------
+
+/**
+ * Karplus-Strong: a noise burst in a delay line that feeds back through a
+ * lowpass, which is a startlingly good string for how little it is.
+ *
+ * THE FOURTH SYNTHESIS FAMILY, and the one this project did not have. Struck
+ * bodies, sustained tones and formant voices were all here; a plucked string is
+ * genuinely different and no amount of additive synthesis imitates it, because
+ * what the ear recognises is the way the harmonics die at DIFFERENT rates — the
+ * top ones first, in a few dozen milliseconds — and that falls out of the
+ * feedback loop for free rather than having to be described partial by partial.
+ *
+ * Two palettes want it: the requinto bachata is built on, and the concert harp
+ * the calm palette's instrument list called the ultimate angelic instrument.
+ *
+ * FRACTIONAL DELAY, AND IT IS NOT A REFINEMENT. A whole-sample delay line can
+ * only produce sr/N Hz, and at the top of a guitar's range that is tens of cents
+ * out — which would break the scale lock in exactly the voice the palette is
+ * named after. Linear interpolation across the loop gives the pitch asked for.
+ *
+ * @param spec.damp     how fast the highs die. 0.5 is a dull nylon string,
+ *                      closer to 0.5+ is brighter and rings longer
+ * @param spec.decay    overall loss per pass; below 1, and very close to it
+ * @param spec.pick     where along the string it is plucked, 0..0.5. Comb-filters
+ *                      the excitation, which is why plucking near the bridge
+ *                      sounds thin and near the middle sounds round
+ * @param spec.tone     lowpass on the excitation. Nylon is darker than steel
+ * @param spec.body     how much of a resonant box sits under it
+ */
+export function pluck(sr, hz, spec, s, { seconds } = {}) {
+  const c = shape(s);
+  const [lo, hi] = spec.dur ?? [1.2, 4.0];
+  const dur = seconds ?? lin(c.longer, lo, hi);
+  const out = alloc(sr, dur);
+
+  const damp = clamp01(spec.damp ?? 0.5) * lin(c.dirtier, 0.94, 1.0);
+
+  // THE LOOP FILTER HAS ITS OWN DELAY, AND IGNORING IT PUTS THE STRING OUT OF
+  // TUNE. Measured with a naive loop: fine at the bottom and 28 cents flat by
+  // 880 Hz, because the error is a fixed fraction of a sample and a sample is a
+  // bigger share of a short loop. That is a quarter tone in the one voice this
+  // palette is named after.
+  //
+  // The filter is a one-ZERO average, y = d*x[n] + (1-d)*x[n-1], chosen over the
+  // one-pole it replaces precisely because its group delay is knowable: (1-d)
+  // samples. The interpolated read then makes up the remainder, so the whole
+  // loop measures exactly sr/hz.
+  const filterDelay = 1 - damp;
+  const wanted = Math.max(2, sr / hz - filterDelay);
+  const n = Math.max(2, Math.ceil(wanted));
+  const frac = n - wanted;                // reading early shortens the loop
+  const buf = new Float32Array(n + 2);
+
+  // The pluck itself: a noise burst, darkened, and comb-filtered by where the
+  // finger sits along the string.
+  const rnd = noiseSource(spec.seed ?? 0x5eed);
+  const tone = exp(clamp01(spec.tone ?? 0.5), 900, 6000) * lin(c.deeper, 1.4, 0.5);
+  const a = onePole(tone, sr);
+  const pickOffset = Math.max(1, Math.round(n * (spec.pick ?? 0.22)));
+  const raw = new Float32Array(n + 2);
+  let lp = 0;
+  for (let i = 0; i < raw.length; i++) {
+    lp += a * (rnd() - lp);
+    raw[i] = lp;
+  }
+  for (let i = 0; i < buf.length; i++) {
+    buf[i] = raw[i] - (i >= pickOffset ? raw[i - pickOffset] : 0);
+  }
+
+  const decay = spec.decay ?? 0.996;
+  const body = spec.body ?? 0;
+  let idx = 0;
+  let prev = 0;
+  let bodyLp = 0;
+
+  for (let i = 0; i < out.length; i++) {
+    // Read with linear interpolation, so the loop is exactly `delay` long.
+    const j = (idx + 1) % n;
+    const v = buf[idx] * (1 - frac) + buf[j] * frac;
+
+    // The lowpass in the loop IS the string: it is why the highs go first.
+    // One zero, not one pole: its delay is a known (1 - damp) samples, which is
+    // what the loop length above is compensating for.
+    const filtered = damp * v + (1 - damp) * prev;
+    prev = v;
+    buf[idx] = filtered * decay;
+    idx = j;
+
+    let x = v;
+    if (body) {
+      // A soft resonance under it, standing in for the box.
+      const ba = onePole(exp(clamp01(spec.bodyHz ?? 0.4), 90, 260), sr);
+      bodyLp += ba * (v - bodyLp);
+      x = v + bodyLp * body;
+    }
+    out[i] = x;
+  }
+
+  // A short fade in, so the very first sample is not a step.
+  const ramp = Math.min(out.length, Math.floor(sr * 0.0015));
+  for (let i = 0; i < ramp; i++) out[i] *= i / ramp;
+
+  return normalize(fadeOut(out, sr, 30), spec.peak ?? 0.7);
+}

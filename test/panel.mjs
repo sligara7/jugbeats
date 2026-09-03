@@ -2,8 +2,11 @@
 //
 // Run:  node test/panel.mjs
 //
-// Drives the REAL page in headless Chromium, because this is the one failure in
-// the project that no amount of reasoning about the source would have caught:
+// Drives the REAL page in headless Chromium — /beats/, not the root, because the
+// root became an index of the palettes and the game moved into a directory.
+//
+// This is the one failure in the project that no amount of reasoning about the
+// source would have caught:
 // the close handler ran, set the attribute it was asked to set, and the panel
 // stayed on screen anyway.
 //
@@ -42,7 +45,7 @@ if (!chrome) {
 // what it found into its own DOM where --dump-dom can read it. Same origin, so
 // it can reach inside.
 const HARNESS = `<!doctype html><meta charset="utf-8">
-<iframe id="app" src="/index.html" style="width:844px;height:390px;border:0"></iframe>
+<iframe id="app" src="/beats/index.html" style="width:844px;height:390px;border:0"></iframe>
 <pre id="out">pending</pre>
 <script>
 (async () => {

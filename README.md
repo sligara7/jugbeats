@@ -112,6 +112,7 @@ node test/panel.mjs           # the help panel can always be left
 
 node forge/calm.mjs calm.wav      # hear the ethereal palette without the game
 node forge/haunted.mjs haunt.wav  # hear the haunted one
+node forge/bachata.mjs bach.wav   # and the bachata one
 node forge/pages.mjs              # regenerate the per-palette pages
 
 python3 -m http.server 8137   # then open http://localhost:8137
@@ -125,17 +126,26 @@ the repository as-is with no build step. `js/dsp.js` is the source of truth;
 `node forge/build-kit.mjs` regenerates them byte for byte. Never hand-edit them.
 
 The per-palette pages are generated the same way, from `index.html`, by
-`node forge/pages.mjs`. Edit `index.html` and re-run it; never edit the output.
+`node forge/pages.mjs` — from `game.html`, which is the one hand-edited page.
+So is `index.html`, which is built from the palette table itself, so adding a
+palette adds its own door. Edit `game.html` or `js/palettes.js` and re-run it.
 
 **One engine, several styles.** A style is a palette — which voices exist, which
 two arrive in which round, the tempo, the swing, the room, and the scale.
 
 | | |
 |---|---|
-| `/` and `/beats/` | phonk, minor pentatonic |
+| `/` | the index — the door to all of them |
+| `/beats/` | phonk: kick, snare, hats, an 808. Dark and shuffled. |
 | `/ethereal/` | handpan, bowls, pad and voice in a big warm room |
 | `/haunted/` | music box, cracked bell, glass harmonica — **whole tone** |
 | `/reggaeton/` | the dembow, and the first round **snaps to it** |
+| `/bachata/` | requinto, segunda, bajo, güira and bongó — **plucked strings** |
+
+The root used to be the phonk game, and moving it broke nothing: `index.html`
+reads the palette id straight out of the hash before it renders and forwards to
+that game, hash intact. A link written before palettes existed carries a zero
+there, which is phonk. Every link ever sent still opens the track it was made of.
 
 They share every byte of the engine. Which palette a track was made with travels
 inside the link, because round ids are positional: without it, someone's handpan

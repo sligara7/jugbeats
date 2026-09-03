@@ -147,8 +147,16 @@ console.log('\na sent track is addressed to its own page');
     homeFor(CALM, site) === site + 'ethereal/', homeFor(CALM, site));
   check('...even when made on the phonk page',
     homeFor(CALM, site + '?p=calm') === site + 'ethereal/', homeFor(CALM, site + '?p=calm'));
-  check('a phonk track goes to the ROOT, where her old links live',
-    homeFor(PHONK, site + 'ethereal/') === site, homeFor(PHONK, site + 'ethereal/'));
+  // Phonk moved out of the root when the root became an index. Old links are not
+  // broken by that — the index reads the palette out of the hash and forwards —
+  // but a NEW phonk link should name the game rather than the front door.
+  check('a phonk track goes to /beats/, not to the index',
+    homeFor(PHONK, site + 'ethereal/') === site + 'beats/', homeFor(PHONK, site + 'ethereal/'));
+  check('and every palette has somewhere of its own',
+    PALETTES.every((p) => p.home && p.home.endsWith('/')),
+    PALETTES.map((p) => p.home).join(' '));
+  check('no two palettes share a home',
+    new Set(PALETTES.map((p) => p.home)).size === PALETTES.length);
 
   // The whole round trip, as a share sheet would carry it.
   const t = new Track({ bars: 2, palette: CALM });

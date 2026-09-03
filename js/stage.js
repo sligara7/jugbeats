@@ -216,6 +216,16 @@ export class Stage {
     const nowStep = this.clock.now();
     if (nowStep !== null && this.track) {
       this._drawBeatGrid(g, hitY, nowStep);
+      // GHOST NOTES, on a round whose rhythm is locked.
+      //
+      // The lock means she cannot play a WRONG beat; it says nothing about where
+      // the RIGHT ones are, so without this she is still guessing and the lock
+      // only tidies up afterwards. Drawing the pattern falling towards her turns
+      // it from a correction into an invitation: tap when the marker arrives.
+      //
+      // The owner's point, and it is the same gap that has turned up three times
+      // now — a capability the game has and does not show.
+      if (this.roundId) this._drawGhosts(g, lanes, hitY, nowStep, this.roundId);
       // Rounds she has already kept, drawn faintly in their own lanes so she can
       // see the thing she is building rather than only the part in her hands.
       for (const id of this.track.accepted) {
@@ -256,6 +266,43 @@ export class Stage {
       g.lineTo(this._w, y);
       g.stroke();
     }
+  }
+
+  /**
+   * The allowed positions of a locked round, falling like notes she has not
+   * played yet.
+   *
+   * Drawn in every lane, because the lock is about WHEN rather than which sound,
+   * and drawn hollow so it never reads as something already recorded. Anything
+   * she has actually played lands on top of these a moment later.
+   */
+  _drawGhosts(g, lanes, hitY, nowStep, roundId) {
+    const grid = this.track.gridFor(roundId);
+    if (!Array.isArray(grid)) return;   // only a lock needs teaching
+
+    const horizon = nowStep + FALL_SECONDS / this.clock.stepSeconds;
+    const bar0 = Math.floor(nowStep / STEPS_PER_BAR);
+    const h = Math.max(10, hitY * 0.022);
+
+    for (let bar = bar0; bar * STEPS_PER_BAR < horizon + STEPS_PER_BAR; bar++) {
+      for (const slot of grid) {
+        const step = bar * STEPS_PER_BAR + slot;
+        if (step < nowStep - 1) continue;
+        const y = this._yFor(step, hitY);
+        if (y === null || y < -h || y > hitY + 4) continue;
+        // Nearer the line is brighter, so the next one to arrive is the loudest
+        // thing on screen without ever competing with a note she has played.
+        const near = Math.max(0, Math.min(1, 1 - (hitY - y) / hitY));
+        for (const L of lanes) {
+          g.globalAlpha = 0.10 + 0.26 * near;
+          g.strokeStyle = '#ffffff';
+          g.lineWidth = 1.5;
+          roundRect(g, L.x + 10, y - h, L.w - 20, h, h / 2);
+          g.stroke();
+        }
+      }
+    }
+    g.globalAlpha = 1;
   }
 
   _drawRuns(g, lanes, hitY, nowStep, roundId, alpha) {
