@@ -450,8 +450,49 @@ export function renderPad(sr, { rootHz = ROOT_HZ, seconds = 4, octaves = 2 } = {
  * It costs two of seven degrees, and gives up nothing musically: this is the
  * scale most of the music she listens to is actually built from.
  */
-export const SCALE_STEPS = [0, 3, 5, 7, 10];
-export const SCALE_NAME = 'minor pentatonic';
+export const MINOR_PENTATONIC = [0, 3, 5, 7, 10];
+
+/**
+ * WHOLE TONE, for a palette that wants to unsettle rather than reassure.
+ *
+ * Six notes, every step the same size, so the scale has no leading tone and no
+ * tonal centre — nothing pulls anywhere and nothing resolves. That floating,
+ * unmoored quality is why it has been the sound of dreams, ghosts and altered
+ * states since Debussy, and it is doing the work honestly rather than by piling
+ * on dissonance.
+ *
+ * IT KEEPS HALF THE PROMISE AND BREAKS THE OTHER HALF ON PURPOSE. Every interval
+ * in it is an even number of semitones, so there is NO SEMITONE and no minor
+ * ninth — none of the grinding a child hears as a mistake. But it DOES contain
+ * the tritone, which the pentatonic was chosen to exclude, and here the tritone
+ * is the entire point.
+ *
+ * So "she cannot play a wrong note" survives in the sense that matters: nothing
+ * she presses sounds like an error. Everything she presses sounds equally
+ * unmoored, which is what the palette is for.
+ */
+export const WHOLE_TONE = [0, 2, 4, 6, 8, 10];
+
+/**
+ * The scale in force. A LIVE BINDING, set by the palette, the same arrangement
+ * ROUNDS uses in track.js and for the same reason: every importer sees the swap
+ * without any of them having to learn that palettes exist.
+ */
+export let SCALE_STEPS = MINOR_PENTATONIC;
+export let SCALE_NAME = 'minor pentatonic';
+
+/**
+ * Point the engine at a palette's scale. Call ONCE, before anything reads a
+ * track — changing it later would re-pitch notes already recorded against it.
+ */
+export function setScale(steps, name) {
+  if (!Array.isArray(steps) || steps.length < 2) {
+    throw new Error('a scale needs at least two degrees');
+  }
+  SCALE_STEPS = steps;
+  SCALE_NAME = name ?? 'custom';
+  return SCALE_STEPS;
+}
 
 /**
  * The chords the music sits on, one per bar. ONE CHORD: it stays home.

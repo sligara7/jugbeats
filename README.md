@@ -108,8 +108,9 @@ node test/midi.mjs            # her track leaves as a file a DAW will read
 node test/palette.mjs         # styles do not cross wires
 node test/panel.mjs           # the help panel can always be left
 
-node forge/calm.mjs calm.wav  # hear the ethereal palette without the game
-node forge/pages.mjs          # regenerate ethereal/index.html from index.html
+node forge/calm.mjs calm.wav      # hear the ethereal palette without the game
+node forge/haunted.mjs haunt.wav  # hear the haunted one
+node forge/pages.mjs              # regenerate the per-palette pages
 
 python3 -m http.server 8137   # then open http://localhost:8137
                               #   /ethereal/ for the calm one
@@ -121,14 +122,28 @@ The files in `kit/` are generated but committed, because GitHub Pages serves
 the repository as-is with no build step. `js/dsp.js` is the source of truth;
 `node forge/build-kit.mjs` regenerates them byte for byte. Never hand-edit them.
 
-`ethereal/index.html` is generated the same way, from `index.html`, by
+The per-palette pages are generated the same way, from `index.html`, by
 `node forge/pages.mjs`. Edit `index.html` and re-run it; never edit the output.
 
 **One engine, several styles.** A style is a palette — which voices exist, which
-two arrive in which round, the tempo, the swing, the room. `/` is the phonk game
-and `/ethereal/` is the calm one, sharing every byte of the engine between them.
-Which palette a track was made with travels inside the link, because round ids
-are positional: without it, someone's handpan would come back as a kick.
+two arrive in which round, the tempo, the swing, the room, and the scale.
+
+| | |
+|---|---|
+| `/` and `/beats/` | phonk, minor pentatonic |
+| `/ethereal/` | handpan, bowls, pad and voice in a big warm room |
+| `/haunted/` | music box, cracked bell, glass harmonica — **whole tone** |
+
+They share every byte of the engine. Which palette a track was made with travels
+inside the link, because round ids are positional: without it, someone's handpan
+would come back as a kick — and a link is always addressed to its own page.
+
+**The scale lock has two halves, and only one is universal.** No palette may put
+a semitone within reach: that is the grinding a child hears as a mistake, and it
+is what makes "she cannot play a wrong note" true. Avoiding the *tritone* as
+well is the pentatonic's extra gift, and the haunted palette gives it up on
+purpose — whole tone has no semitone anywhere and nothing to resolve to, which
+is exactly what haunting sounds like.
 
 ## Design
 

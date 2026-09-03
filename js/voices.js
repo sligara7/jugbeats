@@ -18,8 +18,14 @@
 import { renderClick, degreeToHz, SCALE_STEPS, PROGRESSION, NEUTRAL } from './dsp.js';
 import { PHONK } from './palettes.js';
 
-/** Degrees we pre-render. One octave of the scale is more than four lanes need. */
-const DEGREES = SCALE_STEPS.map((_, i) => i);
+/**
+ * Degrees we pre-render — one octave of whatever scale the palette is using.
+ *
+ * A FUNCTION rather than a constant, because the scale is now a palette's choice
+ * and this used to be captured at module load. A six-note scale would have had
+ * its top note silently unrendered.
+ */
+const degrees = () => SCALE_STEPS.map((_, i) => i);
 
 /**
  * Per-voice level, applied on top of whatever the caller asks for.
@@ -272,7 +278,7 @@ export class Voices {
         const wanted = this.lengthsFor(name);
         for (const len of lengthIdx) {
           if (!wanted.includes(len)) continue;
-          for (const degree of DEGREES) {
+          for (const degree of degrees()) {
             const key = `${name}:${degree}:${chord}:${len}`;
             if (this.pitched.has(key)) continue;
             const hz = degreeToHz(degree, spec.octaves ?? 0) * shift;
@@ -359,7 +365,7 @@ export class Voices {
    */
   play(voice, { degree = 0, time, gain = 1, chord = 0, seconds } = {}) {
     const at = time ?? this.ctx.currentTime;
-    const n = DEGREES.length;
+    const n = degrees().length;
     const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
     const len = nearestLength(seconds ?? LENGTHS[1]);
     const buf =
@@ -392,7 +398,7 @@ export class Voices {
  * The recorded half picks a rendered length once the run is known.
  */
 Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
-  const n = DEGREES.length;
+  const n = degrees().length;
   const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
   const buf = this.buffer(voice, ((degree % n) + n) % n, c, LENGTHS.length - 1);
   if (!buf) return { release() {} };

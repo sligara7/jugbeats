@@ -11,6 +11,7 @@
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
 import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt, setRounds } from './track.js';
+import { setScale } from './dsp.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
@@ -46,6 +47,8 @@ function whichPalette() {
 }
 
 const palette = whichPalette();
+// The scale before the rounds, because a round's lanes name scale degrees.
+if (palette.scale) setScale(palette.scale, palette.scaleName);
 setRounds(palette.rounds);
 
 /**

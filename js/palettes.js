@@ -12,11 +12,15 @@
 // link, and every id here is permanent: NEVER REUSE A NUMBER, for the same
 // reason a format version is never reused.
 
-import { render808, renderLead, renderPad, ROOT_HZ } from './dsp.js';
+import { render808, renderLead, renderPad, ROOT_HZ, MINOR_PENTATONIC, WHOLE_TONE } from './dsp.js';
 import { DEFAULT_ROUNDS } from './track.js';
 import {
   renderPadVoice, renderBreath, renderIdiophone, CALM as CALM_FEEL, impulseResponse,
 } from './ethereal.js';
+import {
+  renderGlassHarmonica, renderWail, renderDread, renderKnock,
+  renderHauntedIdiophone, HAUNTED as HAUNTED_FEEL,
+} from './haunted.js';
 
 /** Where the lead sits relative to the bass — two octaves up, out of its way. */
 const LEAD_OCTAVES = 2;
@@ -41,6 +45,8 @@ export const PHONK = {
   bpm: 138,
   swing: 0.32,
   room: null,           // no reverb: the phonk kit is dry and close on purpose
+  scale: MINOR_PENTATONIC,
+  scaleName: 'minor pentatonic',
 
   /**
    * The rounds she has always had. Taken from track.js rather than restated
@@ -77,6 +83,8 @@ export const CALM = {
   bpm: CALM_FEEL.bpm,      // 68
   swing: CALM_FEEL.swing,  // 0 — syncopation is the thing this idiom avoids
   room: CALM_FEEL.room,
+  scale: MINOR_PENTATONIC,
+  scaleName: 'minor pentatonic',
 
   /**
    * The same four rounds, doing the same jobs, with the instruments the owner
@@ -152,8 +160,95 @@ export const CALM = {
 };
 
 // ---------------------------------------------------------------------------
+// Haunted — for Halloween (dec:idea-haunting-palette). Id 2 forever.
+// ---------------------------------------------------------------------------
 
-export const PALETTES = [PHONK, CALM];
+export const HAUNTED = {
+  id: 2,
+  key: 'haunted',
+  home: 'haunted/',
+  name: 'JugHaunt',
+  tagline: 'Turn your phone sideways, tap the blocks, make something that is not quite right.',
+
+  bpm: HAUNTED_FEEL.bpm,     // 76 — slow enough that each sound is heard alone
+  swing: HAUNTED_FEEL.swing, // 0
+  room: HAUNTED_FEEL.room,   // large, and COLD: barely damped, so the tail stays bright
+
+  /**
+   * WHOLE TONE, AND IT IS THE ONE THING THAT DID NOT INVERT CHEAPLY.
+   *
+   * The pentatonic exists so that no two notes she can reach can clash, and it
+   * excludes the tritone specifically. This palette WANTS the tritone — that is
+   * most of what "haunting" means harmonically.
+   *
+   * Whole tone is the way through: six notes, every step the same size, so there
+   * is no leading tone and nothing resolves anywhere. It contains the tritone
+   * and contains NO semitone, which means the half of the promise that protects
+   * her — nothing grinds, nothing sounds like a mistake — is kept, while the
+   * half that reassures is deliberately given up. It is also, historically, the
+   * sound of dreams and ghosts, so it is doing the work honestly.
+   */
+  scale: WHOLE_TONE,
+  scaleName: 'whole tone',
+
+  /**
+   * SIX LANES OF SCALE BUT STILL FOUR PER ROUND, because the thumbs did not get
+   * bigger. Degrees 0, 2, 3 and 5 spread the six notes out and put a tritone
+   * under one thumb, which is the interval the palette is built on.
+   */
+  rounds: [
+    {
+      id: 'r1', label: 'Knock', full: 'Knock & Clang', sustains: false, click: true,
+      lanes: [
+        { voice: 'knock', degree: 0, name: 'KNOCK' },
+        { voice: 'clang', degree: 0, name: 'CLANG' },
+      ],
+    },
+    {
+      id: 'r2', label: 'Box', full: 'Music Box & Bell', sustains: true, click: false,
+      lanes: [
+        { voice: 'musicbox', degree: 0, name: 'BOX' },
+        { voice: 'tollbell', degree: 3, name: 'BELL' },
+      ],
+    },
+    {
+      id: 'r3', label: 'Dread', full: 'The Dread', sustains: true, click: false,
+      lanes: [
+        { voice: 'dread', degree: 0, name: 'ROOT' },
+        { voice: 'dread', degree: 2, name: '3rd' },
+        { voice: 'dread', degree: 3, name: '♭5' },
+        { voice: 'dread', degree: 5, name: '♭7' },
+      ],
+    },
+    {
+      id: 'r4', label: 'Voice', full: 'Glass & Voice', sustains: true, click: false,
+      lanes: [
+        { voice: 'glass', degree: 0, name: 'GLASS' },
+        { voice: 'glass', degree: 3, name: '♭5' },
+        { voice: 'wail', degree: 2, name: 'WAIL' },
+        { voice: 'shard', degree: 5, name: 'SHARD' },
+      ],
+    },
+  ],
+
+  kit: null,
+  pitched: {
+    knock: { render: (sr, hz, s, o) => renderKnock(sr, s, o), octaves: 0, sampleRate: 22050, attack: 0.002 },
+    clang: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'clang', s, o), octaves: 1, sampleRate: 22050, attack: 0.001 },
+    musicbox: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'musicbox', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
+    tollbell: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'tollbell', s, o), octaves: 1, sampleRate: 22050, attack: 0.005 },
+    shard: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'shard', s, o), octaves: 3, sampleRate: 22050, attack: 0.001 },
+    dread: { render: (sr, hz, s, o) => renderDread(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 1.1 },
+    glass: { render: (sr, hz, s, o) => renderGlassHarmonica(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.95 },
+    wail: { render: (sr, hz, s, o) => renderWail(sr, hz, s, o), octaves: 3, sampleRate: 22050, attack: 0.5 },
+  },
+  drone: (sr) => renderDread(sr, ROOT_HZ * 4, {}, { seconds: 8 }),
+  impulse: (sr) => impulseResponse(sr, { seconds: 4.5, ...HAUNTED_FEEL.room }),
+};
+
+// ---------------------------------------------------------------------------
+
+export const PALETTES = [PHONK, CALM, HAUNTED];
 
 /** By permanent id, for the link. Unknown ids fall back to phonk rather than
  *  failing — a link from a future build should degrade, never break. */

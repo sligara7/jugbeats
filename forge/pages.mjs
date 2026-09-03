@@ -43,6 +43,16 @@ const PAGES = [
     hint: 'turn your volume up — and if it stays quiet, tap “no sound?” after you start',
   },
   {
+    dir: 'haunted',
+    palette: 'haunted',
+    title: 'JugHaunt — make something not quite right',
+    ogTitle: 'JugHaunt',
+    ogDescription:
+      'Turn your phone sideways, tap the blocks, make something that is not quite right.',
+    h1: 'JugHaunt',
+    hint: 'turn your volume up — this one is better in the dark',
+  },
+  {
     dir: 'ethereal',
     palette: 'calm',
     title: 'JugCalm — make something peaceful',

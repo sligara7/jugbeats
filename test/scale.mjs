@@ -170,5 +170,49 @@ console.log('\npitches come out where they should');
   check('and off the bottom too', degreeToHz(-1) < ROOT_HZ);
 }
 
+console.log('\nevery palette keeps the half of the promise that protects her');
+
+{
+  const { PALETTES } = await import('../js/palettes.js');
+
+  // THE PROMISE HAS TWO HALVES AND THEY ARE NOT EQUALLY LOAD-BEARING.
+  //
+  //   PROTECTIVE — no semitone and no minor ninth between two reachable notes.
+  //     That is the grinding a child hears as a mistake, and no palette may
+  //     have it. This is the half that makes "she cannot play a wrong note" true.
+  //
+  //   REASSURING — no tritone either. The pentatonic gives that as well, and the
+  //     haunted palette gives it up ON PURPOSE, because the tritone is most of
+  //     what haunting means harmonically (dec:idea-haunting-palette).
+  const GRIND = [1, 11];
+
+  for (const p of PALETTES) {
+    const found = intervals(p.scale);
+    const grind = GRIND.filter((h) => found.has(h));
+    check(`${p.key}: nothing grinds`, grind.length === 0,
+      grind.length ? `found ${grind.join(', ')} semitones apart` : `${p.scaleName}`);
+  }
+
+  const haunted = PALETTES.find((p) => p.key === 'haunted');
+  const tri = intervals(haunted.scale).has(6);
+  check('haunted DOES reach the tritone, which is the point', tri === true);
+  check('and it is whole tone — every step the same size',
+    haunted.scale.every((v, i, a) => i === 0 || v - a[i - 1] === 2), haunted.scale.join(','));
+  check('so it has no tonal centre for anything to resolve to',
+    new Set(intervals(haunted.scale)).size === 5, 'only even intervals exist in it');
+
+  for (const p of PALETTES.filter((x) => x.key !== 'haunted')) {
+    check(`${p.key}: still avoids the tritone`, intervals(p.scale).has(6) === false);
+  }
+
+  // Every lane of every palette must name a degree the scale actually has.
+  for (const p of PALETTES) {
+    const bad = p.rounds.flatMap((r) => r.lanes)
+      .filter((l) => (l.degree ?? 0) >= p.scale.length * 2);
+    check(`${p.key}: every lane lands inside its scale`, bad.length === 0,
+      bad.length ? bad.map((l) => l.name).join(', ') : `${p.scale.length} notes`);
+  }
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);
