@@ -28,6 +28,13 @@ const LEAD_OCTAVES = 2;
 export const PHONK = {
   id: 0,
   key: 'phonk',
+  /**
+   * WHERE A TRACK IN THIS STYLE LIVES, relative to the site root.
+   *
+   * Phonk's home is the ROOT and always will be, not `/beats/`: every link she
+   * has already sent is `/jugbeats/#...` and those have to keep working.
+   */
+  home: '',
   name: 'JugBeats',
   tagline: 'Turn your phone sideways, tap the blocks, make a phonk beat.',
 
@@ -63,6 +70,7 @@ export const PHONK = {
 export const CALM = {
   id: 1,
   key: 'calm',
+  home: 'ethereal/',
   name: 'JugCalm',
   tagline: 'Turn your phone sideways, tap the blocks, make something peaceful.',
 
@@ -157,4 +165,40 @@ export const byKey = (key) => PALETTES.find((p) => p.key === key) ?? PHONK;
 /** Which palette the page was asked for. */
 export function paletteFromLocation(search = location.search) {
   return byKey(new URLSearchParams(search).get('p') || 'phonk');
+}
+
+/** Every directory a palette can live in, longest first so stripping is greedy. */
+const HOMES = PALETTES.map((p) => p.home).filter(Boolean).sort((a, b) => b.length - a.length);
+
+/**
+ * The site root, whichever palette's page you are standing on.
+ *
+ * `/jugbeats/ethereal/` and `/jugbeats/` both answer `/jugbeats/`, which is what
+ * lets a link be addressed to the palette it belongs to rather than to the page
+ * that happened to make it.
+ */
+export function siteRoot(href = location.href) {
+  const u = new URL(href);
+  u.hash = '';
+  u.search = '';
+  for (const home of [...HOMES, 'beats/']) {
+    if (u.pathname.endsWith('/' + home)) {
+      u.pathname = u.pathname.slice(0, -home.length);
+      break;
+    }
+  }
+  return u.toString();
+}
+
+/**
+ * WHERE A TRACK OF THIS STYLE SHOULD BE SENT.
+ *
+ * A calm track always shares as `.../ethereal/`, even if it was made at
+ * `/?p=calm` or anywhere else. The palette byte inside the link already makes it
+ * PLAY correctly wherever it lands, but the owner's ask was that it also ARRIVE
+ * in the right place — and a link that names its own home is one that survives a
+ * share sheet or a chat app doing something unhelpful to the fragment.
+ */
+export function homeFor(palette, href = location.href) {
+  return new URL(palette.home, siteRoot(href)).toString();
 }

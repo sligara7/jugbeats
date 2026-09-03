@@ -452,8 +452,10 @@ export function paletteIdFromLocation() {
  * Hand a track to the phone's share sheet, falling back to the clipboard.
  * Must be called from inside a user gesture or iOS refuses the sheet.
  */
-export async function share(track, { title = 'Listen to my beat' } = {}) {
-  const url = urlFor(track);
+export async function share(track, { title = 'Listen to my beat', base } = {}) {
+  // `base` lets the caller address the link to the palette's own page rather
+  // than to whichever page happened to build it (dec:styles-are-palettes).
+  const url = base ? urlFor(track, base) : urlFor(track);
   try {
     if (navigator.share) {
       await navigator.share({ title, text: 'I made this beat', url });

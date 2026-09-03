@@ -15,7 +15,7 @@ import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
 import { saveMidi } from './midi.js';
-import { byId, byKey, PHONK, paletteFromLocation } from './palettes.js';
+import { byId, byKey, PHONK, paletteFromLocation, homeFor, siteRoot } from './palettes.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -47,6 +47,25 @@ function whichPalette() {
 
 const palette = whichPalette();
 setRounds(palette.rounds);
+
+/**
+ * A SHARED TRACK ARRIVES AT ITS OWN PALETTE'S PAGE, even if the link pointed
+ * somewhere else.
+ *
+ * The palette byte already makes it PLAY correctly wherever it lands, so this is
+ * not about sound. It is about the address bar being right afterwards: if she
+ * opens a calm link that landed on the phonk page and then sends it on, the
+ * second link should not be one hop further from home. Replacing rather than
+ * pushing, so the back button still leaves rather than looping.
+ *
+ * Guarded on the path actually differing, which is what stops this bouncing.
+ */
+if (location.hash && palette.home !== undefined) {
+  const want = new URL(homeFor(palette)).pathname;
+  if (location.pathname !== want) {
+    location.replace(new URL(palette.home, siteRoot()).toString() + location.hash);
+  }
+}
 
 /**
  * Ask iOS for a playback audio session BEFORE the AudioContext is built.
@@ -489,7 +508,8 @@ el('grid').addEventListener('click', (e) => {
  */
 async function sendTrack() {
   if (track.isEmpty()) { flash('play something first'); return; }
-  const how = await share(track);
+  // Addressed to the palette's own page, not to whatever page made it.
+  const how = await share(track, { base: homeFor(palette) });
   if (how === 'shared') flash('sent');
   else if (how === 'copied') flash('link copied — paste it to someone');
   else flash('could not share, sorry');

@@ -128,5 +128,36 @@ console.log('\nthe rounds actually swap');
   check('a palette with the wrong number of rounds is refused', threw);
 }
 
+console.log('\na sent track is addressed to its own page');
+
+{
+  const { siteRoot, homeFor } = await import('../js/palettes.js');
+  const site = 'https://sligara7.github.io/jugbeats/';
+
+  for (const from of [site, site + 'beats/', site + 'ethereal/', site + '?p=calm']) {
+    check(`site root from ${from.replace(site, '/') || '/'}`,
+      siteRoot(from) === site, siteRoot(from));
+  }
+
+  check('a calm track goes to /ethereal/',
+    homeFor(CALM, site) === site + 'ethereal/', homeFor(CALM, site));
+  check('...even when made on the phonk page',
+    homeFor(CALM, site + '?p=calm') === site + 'ethereal/', homeFor(CALM, site + '?p=calm'));
+  check('a phonk track goes to the ROOT, where her old links live',
+    homeFor(PHONK, site + 'ethereal/') === site, homeFor(PHONK, site + 'ethereal/'));
+
+  // The whole round trip, as a share sheet would carry it.
+  setRounds(CALM.rounds);
+  const t = new Track({ bars: 2 });
+  t.bpm = 68;
+  t.paletteId = CALM.id;
+  t.record('r1', 0, 0);
+  t.accept('r1');
+  const sent = homeFor(CALM, site + 'ethereal/') + '#' + encode(t);
+  check('the sent URL names the ethereal page', sent.startsWith(site + 'ethereal/#'), sent.slice(0, 48));
+  check('and still carries the palette in the link itself',
+    paletteIdOf(sent.split('#')[1]) === CALM.id);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);
