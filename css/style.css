@@ -391,5 +391,9 @@ body.portrait .rotate { display: grid; }
   cursor: pointer;
   white-space: nowrap;
 }
-.playpause[data-state="stopped"] { border-color: var(--hot); color: var(--hot); }
+.playpause[data-state="play"] { border-color: var(--hot); color: var(--hot); }
+/* LISTEN is the one she reaches for mid-take, so it reads as available rather
+   than as a warning. STOP stays quiet — it ends everything, and a button that
+   ends everything should not invite a stray thumb. */
+.playpause[data-state="listen"] { border-color: rgba(255, 255, 255, 0.55); color: var(--ink); }
 .playpause:active { background: rgba(255, 255, 255, 0.28); color: var(--ink); }

@@ -262,5 +262,38 @@ console.log('\nshe can only reach rounds she has earned');
   check('a shared track opens every round', s2.furthestReachable() === ROUNDS.length - 1);
 }
 
+console.log('\nLISTEN punches out of recording without ending anything');
+
+{
+  // The owner's ask: stop KEEPING what she plays, keep the music going, then
+  // punch back in knowing where the note should sit
+  // (dec:idea-pause-stops-recording-not-music).
+  const track = new Track({ bars: 2 });
+  const s = new Session(track);
+  for (let i = 0; i < 4; i++) s.tapTempo();
+  s.begin(0);
+  s.tick(0);
+  check('recording after the count-in', s.recording === true);
+
+  track.record('r1', 0, 0);
+  track.record('r1', 1, 8);
+  const before = track.count('r1');
+
+  s.halt();
+
+  check('no longer recording', s.recording === false);
+  check('but not thrown back to the tempo tap', s.tempoIsSet === true);
+  check('everything she played is still there', track.count('r1') === before, `${track.count('r1')}`);
+  check('still on the same round', s.round.id === 'r1');
+  check('and the round is not accepted behind her back', track.accepted.has('r1') === false);
+
+  // Punching back in is just START again — the same call the button already makes.
+  check('she can start recording again', s.begin(0) === true);
+  s.tick(0);
+  check('and is recording once more', s.recording === true);
+  track.record('r1', 0, 4);
+  check('the new note joins the old ones', track.count('r1') === before + 1);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

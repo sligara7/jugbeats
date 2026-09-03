@@ -295,6 +295,33 @@ function transportLabel() {
  *
  * Returns null when there is nothing to undo, and the button hides.
  */
+/**
+ * The left-hand button, labelled with whatever it would actually do right now.
+ *
+ * THREE THINGS, ONE CONTROL, and the same reasoning the reset button already
+ * uses: this screen's virtue is that almost nothing is on it, and a fourth
+ * permanent button on a two-key game is how it stops being a two-key game.
+ * Only one of these is ever true, and the label always names it.
+ *
+ *   LISTEN — while recording. Stops KEEPING what she plays and lets the loop run
+ *            on, so she can find where the note wants to sit before committing
+ *            it. The owner's word, and the thing a loop pedal calls punching out.
+ *   STOP   — while the music runs and nothing is being recorded. Ends everything.
+ *   PLAY   — once it has been stopped.
+ *
+ * LISTEN AND STOP ARE DELIBERATELY NOT BOTH PRESENT AT ONCE. Two buttons that
+ * both end something, on one screen, is how a child learns to trust neither
+ * (rule:one-word-one-meaning) — the same reason the big button stopped saying
+ * STOP and started saying NEXT. From a recording round, silence is two taps:
+ * listen, then stop. That is the right cost for the rarer thing.
+ */
+function transportAction() {
+  if (session.recording) return { label: 'listen', kind: 'listen' };
+  if (clock.running) return { label: 'stop', kind: 'stop' };
+  if (session.tempoIsSet) return { label: 'play', kind: 'play' };
+  return null;
+}
+
 function resetAction() {
   if (track.count(session.round?.id) > 0) {
     return { label: `clear ${session.round.label.toLowerCase()}`, kind: 'round' };
@@ -328,9 +355,12 @@ function refresh() {
   }
 
   const pp = el('playpause');
-  pp.hidden = !session.tempoIsSet;
-  pp.textContent = clock.running ? 'pause' : 'play';
-  pp.dataset.state = clock.running ? 'running' : 'stopped';
+  const action = transportAction();
+  pp.hidden = action === null;
+  if (action) {
+    pp.textContent = action.label;
+    pp.dataset.state = action.kind;
+  }
 
   // Only once the whole track is finished, and it stays out of the way until
   // then. A shared link arrives with every round already accepted, so the
@@ -465,6 +495,29 @@ el('length').addEventListener('click', (e) => {
  * start — the same staleness that once silenced the metronome for half a
  * minute. The drone goes with it: silence should mean silence.
  */
+/**
+ * Punch out of recording, and let the loop keep going.
+ *
+ * The session has modelled this state since the loop pedal was built — `halt()`
+ * puts it back to `tempo`, which is "playing, not recording, everything kept".
+ * The only thing that used to stop the music was main.js calling clock.stop()
+ * alongside it, and that call is deliberately absent here. That is the whole
+ * difference between this and stopping (dec:idea-pause-stops-recording-not-music).
+ *
+ * Held notes are released because her thumb is no longer recording them, and the
+ * hold map is cleared so nothing gets extended into a round she has left. What
+ * is NOT cleared is `alreadySounded`: the clock keeps running, so the guard
+ * against re-sounding a note she just played by hand is still live and still
+ * needed.
+ */
+function listenOnly() {
+  for (const h of held.values()) h.release();
+  held.clear();
+  holding.clear();
+  session.halt();
+  refresh();
+}
+
 function pauseAll() {
   clock.stop();
   for (const h of held.values()) h.release();
@@ -486,8 +539,18 @@ function resumeAll() {
 
 el('playpause').addEventListener('click', (e) => {
   e.stopPropagation();
-  if (clock.running) { pauseAll(); flash('stopped'); }
-  else { resumeAll(); flash('off we go'); }
+  const action = transportAction();
+  if (!action) return;
+  if (action.kind === 'listen') {
+    listenOnly();
+    flash('just listening — play along, nothing is being kept');
+  } else if (action.kind === 'stop') {
+    pauseAll();
+    flash('stopped — everything you made is still here');
+  } else {
+    resumeAll();
+    flash('off we go');
+  }
 });
 
 el('grid').addEventListener('click', (e) => {
