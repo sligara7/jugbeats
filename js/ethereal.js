@@ -25,55 +25,10 @@
 // the engine is already locked to a minor pentatonic (dec:pentatonic-for-chords)
 // with a passing check behind it. Only the voicing opens out.
 
-import { NEUTRAL } from './dsp.js';
-
-const lin = (v, lo, hi) => lo + (hi - lo) * v;
-const exp = (v, lo, hi) => lo * Math.pow(hi / lo, v);
-const shape = (s) => ({ ...NEUTRAL, ...(s || {}) });
-const alloc = (sr, seconds) => new Float32Array(Math.max(1, Math.ceil(sr * seconds)));
-
-/** Deterministic noise, seeded, so the forge renders byte-identically. */
-function noiseSource(seed = 1) {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s ^= s << 13; s >>>= 0;
-    s ^= s >> 17;
-    s ^= s << 5; s >>>= 0;
-    return (s / 0xffffffff) * 2 - 1;
-  };
-}
-
-function normalize(buf, peak = 0.9) {
-  let max = 0;
-  for (let i = 0; i < buf.length; i++) max = Math.max(max, Math.abs(buf[i]));
-  if (max > 0) for (let i = 0; i < buf.length; i++) buf[i] *= peak / max;
-  return buf;
-}
-
-function fadeOut(buf, sr, ms = 30) {
-  const n = Math.min(buf.length, Math.floor((ms / 1000) * sr));
-  for (let i = 0; i < n; i++) buf[buf.length - n + i] *= 1 - i / n;
-  return buf;
-}
-
-/**
- * A swell rather than a strike. `attack` is how long it takes to arrive and
- * `release` how long it takes to leave; in between it simply holds.
- *
- * This is the single envelope difference between the two palettes. A 6ms attack
- * says something was hit; a 700ms attack says something is being bowed, and the
- * ear decides which instrument it is hearing largely on that basis.
- */
-function swellAt(t, seconds, attack, release) {
-  if (t >= seconds) return 0;
-  const up = t < attack ? t / attack : 1;
-  const left = seconds - t;
-  const down = left < release ? left / release : 1;
-  // Raised cosine on both edges: a linear ramp has a corner, and a corner is a
-  // transient, which is the thing this palette exists to avoid.
-  const g = up * down;
-  return 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, g));
-}
+import {
+  lin, exp, shape, alloc, noiseSource, normalize, fadeOut, onePole,
+  swell as swellAt, ratios as RATIOS, struck, formantBank, sawPair,
+} from './synth.js';
 
 // ---------------------------------------------------------------------------
 // The room
@@ -286,46 +241,44 @@ export function renderPadVoice(sr, hz, s, { seconds } = {}) {
  * `trem` — Hz of amplitude tremolo, or 0. The vibraphone's motorised resonators
  *   are its entire signature and cost one multiply.
  */
-const RATIOS = (arr) => arr.map((v) => v / arr[0]);
-
 export const IDIOPHONES = {
   // Tuned so the first overtones are an octave and a twelfth — 1:2:3, nearly
   // harmonic. THAT is why a handpan sounds consonant and hypnotic where a bell
   // sounds ominous: it is the one struck metal instrument deliberately tuned to
   // agree with itself. Long decay, soft hand strike.
   handpan: { m: RATIOS([1, 2, 3, 4.1, 5.2, 6.9]), g: [1, 0.5, 0.34, 0.12, 0.07, 0.04],
-             d: [1, 1.5, 1.9, 2.8, 3.4, 4.2], attack: 0.004, decay: 3.0, peak: 0.66 },
+             d: [1, 1.5, 1.9, 2.8, 3.4, 4.2], attack: 0.004, decay: 3.0, peak: 0.66, dur: [2.2, 7.0], norm: 2.6 },
 
   // The handpan's smaller cousin: the tongues are shorter so the overtones are
   // less perfectly tuned and it rings drier and more self-contained.
   tongue:  { m: RATIOS([1, 2.02, 3.06, 4.4, 6.1]), g: [1, 0.42, 0.26, 0.1, 0.05],
-             d: [1, 1.7, 2.3, 3.2, 4.0], attack: 0.003, decay: 3.6, peak: 0.62 },
+             d: [1, 1.7, 2.3, 3.2, 4.0], attack: 0.003, decay: 3.6, peak: 0.62, dur: [2.2, 7.0], norm: 2.6 },
 
   // Felt hammers on steel plates: bright, delicate, short. The music box.
   celesta: { m: RATIOS([1, 4.05, 9.6, 16.2]), g: [1, 0.26, 0.09, 0.03],
-             d: [1, 2.4, 3.6, 5.0], attack: 0.002, decay: 5.5, peak: 0.55 },
+             d: [1, 2.4, 3.6, 5.0], attack: 0.002, decay: 5.5, peak: 0.55, dur: [2.2, 7.0], norm: 2.6 },
 
   // Aluminium bar modes sit near 1:4:10. The motor is the signature — without
   // the tremolo this is just a dull marimba.
   vibes:   { m: RATIOS([1, 4, 10, 18]), g: [1, 0.3, 0.1, 0.03],
-             d: [1, 2.0, 3.0, 4.5], attack: 0.003, decay: 3.2, trem: 5.5, peak: 0.6 },
+             d: [1, 2.0, 3.0, 4.5], attack: 0.003, decay: 3.2, trem: 5.5, peak: 0.6, dur: [2.2, 7.0], norm: 2.6 },
 
   // Small thick bronze discs. Very high, very pure, very long — the ringing
   // that hangs over everything after the note has gone.
   crotale: { m: RATIOS([1, 2.66, 5.43, 8.9]), g: [1, 0.28, 0.11, 0.04],
-             d: [1, 1.8, 2.6, 3.4], attack: 0.002, decay: 1.6, peak: 0.45 },
+             d: [1, 1.8, 2.6, 3.4], attack: 0.002, decay: 1.6, peak: 0.45, dur: [2.2, 7.0], norm: 2.6 },
 
   // Quartz. Struck it rings for a very long time; RUBBED it swells in, which is
   // what the slow attack is for. The near-unison second partial gives the slow
   // beating that makes a bowl sound like it is breathing.
   bowl:    { m: RATIOS([1, 1.004, 2.32, 4.25]), g: [1, 0.8, 0.22, 0.07],
-             d: [1, 1.02, 1.9, 2.8], attack: 0.9, decay: 0.9, peak: 0.6 },
+             d: [1, 1.02, 1.9, 2.8], attack: 0.9, decay: 0.9, peak: 0.6, dur: [2.2, 7.0], norm: 2.6 },
 
   // The classic inharmonic bell set. Kept because it is genuinely a different
   // colour from everything above — darker, stranger, less obliging.
   bell:    { m: RATIOS([0.56, 0.92, 1.19, 1.71, 2.0, 2.74, 3.76]),
              g: [1, 0.68, 0.5, 0.28, 0.22, 0.14, 0.08],
-             d: [1, 1.25, 1.55, 2.1, 2.4, 3.1, 4.0], attack: 0.004, decay: 3.2, peak: 0.66 },
+             d: [1, 1.25, 1.55, 2.1, 2.4, 3.1, 4.0], attack: 0.004, decay: 3.2, peak: 0.66, dur: [2.2, 7.0], norm: 2.6 },
 };
 
 /**
@@ -335,32 +288,10 @@ export const IDIOPHONES = {
  * instruments is data and pretending otherwise would be seven copies of this
  * loop drifting apart.
  */
-export function renderIdiophone(sr, hz, name, s, { seconds } = {}) {
+export function renderIdiophone(sr, hz, name, s, opts) {
   const inst = IDIOPHONES[name];
   if (!inst) throw new Error(`no idiophone named "${name}"`);
-  const c = shape(s);
-  const dur = seconds ?? lin(c.longer, 2.2, 7.0);
-  const out = alloc(sr, dur);
-  const ph = new Float64Array(inst.m.length);
-  const attack = inst.attack * lin(c.punchier, 1.8, 0.5);
-  const trem = inst.trem || 0;
-  let tph = 0;
-
-  for (let i = 0; i < out.length; i++) {
-    const t = i / sr;
-    let x = 0;
-    for (let k = 0; k < inst.m.length; k++) {
-      ph[k] += (2 * Math.PI * hz * inst.m[k]) / sr;
-      x += Math.sin(ph[k]) * inst.g[k] * Math.exp((-inst.decay * inst.d[k] * t) / dur);
-    }
-    let a = t < attack ? 0.5 - 0.5 * Math.cos((Math.PI * t) / attack) : 1;
-    if (trem) {
-      tph += (2 * Math.PI * trem) / sr;
-      a *= 0.78 + 0.22 * Math.sin(tph);
-    }
-    out[i] = (x / 2.6) * a;
-  }
-  return normalize(fadeOut(out, sr, 40), inst.peak);
+  return struck(sr, hz, inst, s, opts);
 }
 
 /** The bell, kept as a named door onto the table so callers need not change. */
@@ -416,8 +347,9 @@ export function renderBreath(sr, hz, s, { seconds } = {}) {
     { hz: 800, q: 11, g: 0.42 },
     { hz: 2600, q: 14, g: 0.10 },
   ];
-  const st = formants.map(() => ({ b0: 0, b1: 0 }));
-  let p1 = 0, p2 = 0, vib = 0;
+  const bank = formantBank(formants);
+  const source = sawPair(1.0016);
+  let vib = 0;
 
   for (let i = 0; i < out.length; i++) {
     const t = i / sr;
@@ -428,25 +360,10 @@ export function renderBreath(sr, hz, s, { seconds } = {}) {
     vib += (2 * Math.PI * 4.6) / sr;
     const drift = 1 + Math.sin(vib) * 0.0035 * Math.min(1, t / (dur * 0.5));
 
-    p1 += (2 * Math.PI * hz * drift) / sr;
-    p2 += (2 * Math.PI * hz * drift * 1.0016) / sr;
     // A sawtooth-ish source, because a voice is rich and a sine has nothing for
     // the formants to select from.
-    const saw = (ph) => 2 * ((ph / (2 * Math.PI)) % 1) - 1;
-    const src = (saw(p1) + saw(p2)) * 0.5 + rnd() * 0.035;
-
-    let x = 0;
-    for (let k = 0; k < formants.length; k++) {
-      const f = formants[k], s2 = st[k];
-      const w = (2 * Math.PI * f.hz) / sr;
-      const a = Math.sin(w) / (2 * f.q);
-      // A two-pole resonator, run direct — cheap and stable at these Qs.
-      const hp = src - s2.b0 - (1 / f.q) * s2.b1;
-      s2.b1 += 2 * Math.sin(w / 2) * hp;
-      s2.b0 += 2 * Math.sin(w / 2) * s2.b1;
-      x += s2.b1 * f.g * (1 + a * 0);
-    }
-    out[i] = x * env * 0.34;
+    const src = source(hz * drift, sr) + rnd() * 0.035;
+    out[i] = bank(src, sr) * env * 0.34;
   }
   return normalize(fadeOut(out, sr, 60), 0.6);
 }

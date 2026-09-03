@@ -83,6 +83,15 @@ html, body {
   cursor: pointer;
 }
 .length:active { background: var(--hot); border-color: var(--hot); color: #14060d; }
+/* A locked rhythm is a statement, not a control. It still says what it is —
+   she should be able to see why her taps land where they do — but it does not
+   look like something that will change if she presses it. */
+.length[data-locked="true"] {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: transparent;
+}
+.length[data-locked="true"]:active { background: transparent; border-color: rgba(255, 255, 255, 0.3); color: rgba(244, 238, 252, 0.8); }
 
 /* --- the transport, down the empty middle -------------------------------- */
 

@@ -64,8 +64,52 @@ export const FINE_GRID = 1;
  * The grid is now per round, so it is passed in rather than assumed.
  */
 export function quantise(atStep, grid = GRID) {
-  return Math.round(atStep / grid) * grid;
+  if (!Array.isArray(grid)) return Math.round(atStep / grid) * grid;
+  // A RHYTHM LOCK: the grid is a list of positions in the bar rather than a
+  // spacing, so snapping means finding the nearest one. Neighbouring bars are
+  // searched too, because the nearest allowed position to a tap just before the
+  // barline is in the NEXT bar.
+  let best = 0;
+  let bestD = Infinity;
+  const bar = Math.floor(atStep / STEPS_PER_BAR);
+  for (let b = bar - 1; b <= bar + 1; b++) {
+    for (const slot of grid) {
+      const abs = b * STEPS_PER_BAR + slot;
+      const d = Math.abs(abs - atStep);
+      if (d < bestD) { bestD = d; best = abs; }
+    }
+  }
+  return best;
 }
+
+/**
+ * May a note land on this slot?
+ *
+ * A grid is EITHER a spacing — 2 for eighths, 1 for sixteenths — OR a list of
+ * allowed positions within the bar. The second is a RHYTHM LOCK, and it is the
+ * same idea as the scale lock applied to time: the pentatonic means she cannot
+ * play a wrong note because the lanes will not offer her one, and a rhythm lock
+ * means she cannot play a wrong beat because the grid will not accept one
+ * (dec:idea-reggaeton-palette).
+ */
+export function onGrid(slot, grid) {
+  if (!Array.isArray(grid)) return slot % grid === 0;
+  const inBar = ((slot % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR;
+  return grid.includes(inBar);
+}
+
+/**
+ * How long a block sits on screen for a note on this grid.
+ *
+ * On a spacing that is the spacing. On a rhythm lock the gaps are uneven by
+ * definition, so an eighth is used — long enough to read as a block, short
+ * enough never to overlap the next allowed position, since a lock this design
+ * would ship never puts two hits closer than a sixteenth apart.
+ */
+export const blockSteps = (grid) => (Array.isArray(grid) ? 2 : grid);
+
+/** Is this round's rhythm fixed by its palette rather than chosen by her? */
+export const isLocked = (grid) => Array.isArray(grid);
 
 /**
  * The rounds, in the order she plays them (dec:two-thumbs-loop-pedal).
@@ -150,6 +194,15 @@ export function setRounds(rounds) {
   if (!Array.isArray(rounds) || rounds.length !== DEFAULT_ROUNDS.length) {
     throw new Error(`a palette must define exactly ${DEFAULT_ROUNDS.length} rounds`);
   }
+  // A LOCKED ROUND MAY NOT SUSTAIN, and this is a guard rather than a taste.
+  // Held notes are walked in even steps — start, previous, how many fit — and a
+  // rhythm lock has uneven gaps by definition, so the two models do not compose.
+  // Refusing here is far better than discovering it as a held note of the wrong
+  // length somewhere downstream.
+  const bad = rounds.find((r) => Array.isArray(r.grid) && r.sustains);
+  if (bad) {
+    throw new Error(`round "${bad.id}" cannot both hold notes and lock its rhythm`);
+  }
   ROUNDS = rounds;
   return ROUNDS;
 }
@@ -213,7 +266,10 @@ export class Track {
      * and it would take the swing off her kick as well, since kick and snare
      * share a round.
      */
-    this.roundGrid = Object.fromEntries(ROUNDS.map((r) => [r.id, GRID]));
+    // FROM THE PALETTE'S OWN ROUNDS. A round may declare a rhythm lock — a list of
+    // positions rather than a spacing — and ROUNDS is already whichever palette
+    // this is, so the default arrives without Track having to know about palettes.
+    this.roundGrid = Object.fromEntries(ROUNDS.map((r) => [r.id, r.grid ?? GRID]));
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
@@ -261,6 +317,11 @@ export class Track {
    */
   setGrid(roundId, grid) {
     if (!(roundId in this.roundGrid)) return false;
+    // A LOCKED ROUND DOES NOT TOGGLE. Its rhythm belongs to the palette, not to
+    // the track, so neither she nor a decoded link may talk it out of it — a
+    // reggaetón round that could be switched to plain eighths would stop being
+    // reggaetón and nothing would say why.
+    if (isLocked(this.roundGrid[roundId])) return false;
     this.roundGrid[roundId] = grid === FINE_GRID ? FINE_GRID : GRID;
     return true;
   }
@@ -352,7 +413,7 @@ export class Track {
       const slot = Math.floor(v / LANE_STRIDE);
       // A note on an in-between step is kept but not reported while the round
       // is coarse, so coarsening never destroys anything.
-      if (slot < loop && slot % grid === 0) out.push({ slot, lane: v % LANE_STRIDE });
+      if (slot < loop && onGrid(slot, grid)) out.push({ slot, lane: v % LANE_STRIDE });
     }
     return out;
   }
@@ -372,7 +433,7 @@ export class Track {
 
     const grid = this.gridFor(roundId);
     if (!roundById(roundId)?.sustains) {
-      for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: grid });
+      for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: blockSteps(grid) });
       return out;
     }
 
@@ -401,7 +462,7 @@ export class Track {
     const set = this.events[roundId];
     if (!set || !set.has(slot * LANE_STRIDE + lane)) return false;
     const grid = this.gridFor(roundId);
-    if (slot % grid !== 0) return false; // not on this round's grid at all
+    if (!onGrid(slot, grid)) return false; // not on this round's grid at all
     if (!roundById(roundId)?.sustains) return true;
 
     // A lane held the whole way round has no gap to start after, so give it one
@@ -428,7 +489,7 @@ export class Track {
   runLengthAt(roundId, lane, slot) {
     if (!this.isRunStart(roundId, lane, slot)) return 0;
     const grid = this.gridFor(roundId);
-    if (!roundById(roundId)?.sustains) return grid;
+    if (!roundById(roundId)?.sustains) return blockSteps(grid);
     const set = this.events[roundId];
     const loop = this.loopStepsFor(roundId);
     let n = 0;

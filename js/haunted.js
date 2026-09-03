@@ -25,35 +25,10 @@
 // beating is heard as grinding. It is why an out-of-tune piano is unpleasant in
 // a way an honest minor second is not, and it costs one number per partial.
 
-import { NEUTRAL } from './dsp.js';
-
-const lin = (v, lo, hi) => lo + (hi - lo) * v;
-const exp = (v, lo, hi) => lo * Math.pow(hi / lo, v);
-const shape = (s) => ({ ...NEUTRAL, ...(s || {}) });
-const alloc = (sr, seconds) => new Float32Array(Math.max(1, Math.ceil(sr * seconds)));
-
-function noiseSource(seed = 1) {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s ^= s << 13; s >>>= 0;
-    s ^= s >> 17;
-    s ^= s << 5; s >>>= 0;
-    return (s / 0xffffffff) * 2 - 1;
-  };
-}
-
-function normalize(buf, peak = 0.9) {
-  let max = 0;
-  for (let i = 0; i < buf.length; i++) max = Math.max(max, Math.abs(buf[i]));
-  if (max > 0) for (let i = 0; i < buf.length; i++) buf[i] *= peak / max;
-  return buf;
-}
-
-function fadeOut(buf, sr, ms = 30) {
-  const n = Math.min(buf.length, Math.floor((ms / 1000) * sr));
-  for (let i = 0; i < n; i++) buf[buf.length - n + i] *= 1 - i / n;
-  return buf;
-}
+import {
+  lin, exp, shape, alloc, noiseSource, normalize, fadeOut,
+  ratios as RATIOS, struck, formantBank, sawPair,
+} from './synth.js';
 
 // ---------------------------------------------------------------------------
 // The struck things
@@ -71,53 +46,31 @@ function fadeOut(buf, sr, ms = 30) {
  * cents away from itself, so the pair drifts in and out of phase. 0 is clean.
  * Around 0.4% is a slow shimmer; 2% is a sound with something wrong with it.
  */
-const RATIOS = (arr) => arr.map((v) => v / arr[0]);
-
 export const HAUNTED_IDIOPHONES = {
   // A music box left somewhere damp. Celesta ratios, detuned until the sweetness
   // curdles — the most recognisable "something is wrong here" sound there is,
   // because the ear knows exactly what it is supposed to sound like.
   musicbox: { m: RATIOS([1, 4.05, 9.6, 16.2]), g: [1, 0.3, 0.12, 0.05],
-              d: [1, 2.2, 3.2, 4.4], attack: 0.002, decay: 4.2, beat: 0.009, peak: 0.55 },
+              d: [1, 2.2, 3.2, 4.4], attack: 0.002, decay: 4.2, beat: 0.009, peak: 0.55, dur: [2.0, 6.0], norm: 2.4 },
 
   // A cracked bell. The textbook inharmonic set, beating hard.
   tollbell: { m: RATIOS([0.56, 0.92, 1.19, 1.71, 2.0, 2.74, 3.76]),
               g: [1, 0.7, 0.55, 0.34, 0.28, 0.18, 0.1],
-              d: [1, 1.2, 1.4, 1.9, 2.2, 2.9, 3.7], attack: 0.005, decay: 2.2, beat: 0.014, peak: 0.68 },
+              d: [1, 1.2, 1.4, 1.9, 2.2, 2.9, 3.7], attack: 0.005, decay: 2.2, beat: 0.014, peak: 0.68, dur: [2.0, 6.0], norm: 2.4 },
 
   // Struck metal with no tuning at all — a pipe, a chain, a gate.
   clang:    { m: RATIOS([1, 1.41, 2.13, 3.17, 4.61]), g: [1, 0.8, 0.6, 0.35, 0.2],
-              d: [1, 1.3, 1.7, 2.4, 3.2], attack: 0.001, decay: 3.4, beat: 0.02, peak: 0.6 },
+              d: [1, 1.3, 1.7, 2.4, 3.2], attack: 0.001, decay: 3.4, beat: 0.02, peak: 0.6, dur: [2.0, 6.0], norm: 2.4 },
 
   // High, thin and piercing — the register the brief actually asks for.
   shard:    { m: RATIOS([1, 2.76, 5.4, 8.2]), g: [1, 0.5, 0.3, 0.16],
-              d: [1, 1.6, 2.2, 3.0], attack: 0.001, decay: 2.0, beat: 0.006, peak: 0.42 },
+              d: [1, 1.6, 2.2, 3.0], attack: 0.001, decay: 2.0, beat: 0.006, peak: 0.42, dur: [2.0, 6.0], norm: 2.4 },
 };
 
-export function renderHauntedIdiophone(sr, hz, name, s, { seconds } = {}) {
+export function renderHauntedIdiophone(sr, hz, name, s, opts) {
   const inst = HAUNTED_IDIOPHONES[name];
   if (!inst) throw new Error(`no haunted idiophone named "${name}"`);
-  const c = shape(s);
-  const dur = seconds ?? lin(c.longer, 2.0, 6.0);
-  const out = alloc(sr, dur);
-  const beat = inst.beat ?? 0;
-  // Two phases per partial: the note, and its slightly wrong twin.
-  const ph = new Float64Array(inst.m.length * 2);
-  const attack = inst.attack * lin(c.punchier, 1.8, 0.5);
-
-  for (let i = 0; i < out.length; i++) {
-    const t = i / sr;
-    let x = 0;
-    for (let k = 0; k < inst.m.length; k++) {
-      const env = inst.g[k] * Math.exp((-inst.decay * inst.d[k] * t) / dur);
-      ph[k * 2] += (2 * Math.PI * hz * inst.m[k]) / sr;
-      ph[k * 2 + 1] += (2 * Math.PI * hz * inst.m[k] * (1 + beat)) / sr;
-      x += (Math.sin(ph[k * 2]) + Math.sin(ph[k * 2 + 1])) * 0.5 * env;
-    }
-    const a = t < attack ? 0.5 - 0.5 * Math.cos((Math.PI * t) / attack) : 1;
-    out[i] = (x / 2.4) * a;
-  }
-  return normalize(fadeOut(out, sr, 40), inst.peak);
+  return struck(sr, hz, inst, s, opts);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +157,9 @@ export function renderWail(sr, hz, s, { seconds } = {}) {
     { hz: 2200, q: 20, g: 0.55 },
     { hz: 3100, q: 22, g: 0.3 },
   ];
-  const st = formants.map(() => ({ b0: 0, b1: 0 }));
-  let p1 = 0, p2 = 0, v1 = 0, v2 = 0;
+  const bank = formantBank(formants);
+  const source = sawPair(1.0038);
+  let v1 = 0, v2 = 0;
   const attack = lin(c.punchier, 0.8, 0.25);
 
   for (let i = 0; i < out.length; i++) {
@@ -223,21 +177,8 @@ export function renderWail(sr, hz, s, { seconds } = {}) {
     v2 += (2 * Math.PI * 1.7) / sr;
     const drift = 1 + Math.sin(v1) * 0.006 + Math.sin(v2) * 0.009;
 
-    p1 += (2 * Math.PI * hz * drift) / sr;
-    p2 += (2 * Math.PI * hz * drift * 1.0038) / sr;
-    const saw = (x) => 2 * ((x / (2 * Math.PI)) % 1) - 1;
-    const src = (saw(p1) + saw(p2)) * 0.5 + rnd() * 0.05;
-
-    let x = 0;
-    for (let k = 0; k < formants.length; k++) {
-      const f = formants[k], q = st[k];
-      const w = (2 * Math.PI * f.hz) / sr;
-      const hp = src - q.b0 - (1 / f.q) * q.b1;
-      q.b1 += 2 * Math.sin(w / 2) * hp;
-      q.b0 += 2 * Math.sin(w / 2) * q.b1;
-      x += q.b1 * f.g;
-    }
-    out[i] = x * env * 0.3;
+    const src = source(hz * drift, sr) + rnd() * 0.05;
+    out[i] = bank(src, sr) * env * 0.3;
   }
   return normalize(fadeOut(out, sr, 60), 0.58);
 }

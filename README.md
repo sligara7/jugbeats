@@ -69,7 +69,9 @@ no server, no accounts, nothing to pay for.
 
 | | |
 |---|---|
-| `js/dsp.js` | The sound design. Pure functions, no Web Audio, no DOM. |
+| `js/synth.js` | The synthesis toolkit every palette is built from. |
+| `js/dsp.js` | The phonk sound design. Pure functions, no Web Audio, no DOM. |
+| `js/palettes.js` | The styles, as data: voices, rounds, tempo, swing, room, scale. |
 | `js/clock.js` | Musical time — the only part that knows what time it is. |
 | `js/voices.js` | The sound engine. |
 | `js/track.js` | Your music, as plain data. |
@@ -133,10 +135,19 @@ two arrive in which round, the tempo, the swing, the room, and the scale.
 | `/` and `/beats/` | phonk, minor pentatonic |
 | `/ethereal/` | handpan, bowls, pad and voice in a big warm room |
 | `/haunted/` | music box, cracked bell, glass harmonica — **whole tone** |
+| `/reggaeton/` | the dembow, and the first round **snaps to it** |
 
 They share every byte of the engine. Which palette a track was made with travels
 inside the link, because round ids are positional: without it, someone's handpan
 would come back as a kick — and a link is always addressed to its own page.
+
+**And a rhythm lock, which is the same idea applied to time.** The pentatonic
+means she cannot play a wrong note, because the lanes will not offer her one.
+Reggaetón's first round means she cannot play a wrong *beat*: its grid is the
+dembow itself — a tresillo at steps 0, 3, 6, 8, 11, 14 — so a tap anywhere near
+it lands on it. Steps 3 and 11 are not on the eighth grid at all, which is why
+the pattern was unreachable until a grid could be a list of positions rather
+than a spacing.
 
 **The scale lock has two halves, and only one is universal.** No palette may put
 a semitone within reach: that is the grinding a child hears as a mistake, and it

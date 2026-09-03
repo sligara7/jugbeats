@@ -159,5 +159,53 @@ console.log('\na sent track is addressed to its own page');
     paletteIdOf(sent.split('#')[1]) === CALM.id);
 }
 
+console.log('\nthe rhythm lock');
+
+{
+  const { onGrid, blockSteps, isLocked, quantise: q } = await import('../js/track.js');
+  const { REGGAETON } = await import('../js/palettes.js');
+  const dembow = REGGAETON.rounds[0].grid;
+
+  check('reggaeton locks its first round', isLocked(dembow), dembow.join(','));
+  check('it is a tresillo laid twice — 3+3+2, 3+3+2',
+    dembow.join(',') === '0,3,6,8,11,14');
+
+  // The whole reason the lock had to exist.
+  check('steps 3 and 11 are NOT on the eighth grid',
+    !onGrid(3, 2) && !onGrid(11, 2), 'which is why the dembow was unreachable');
+  check('but they ARE on the dembow', onGrid(3, dembow) && onGrid(11, dembow));
+  check('and step 4 is not', !onGrid(4, dembow));
+
+  // Whatever she taps lands somewhere the pattern wants.
+  for (let tap = 0; tap < 16; tap += 0.5) {
+    const at = q(tap, dembow);
+    if (!onGrid(at, dembow)) { check(`tap at ${tap} lands on the pattern`, false, `${at}`); break; }
+  }
+  check('every tap in a bar lands on the pattern', true, '32 positions checked');
+  check('a tap past the last hit wraps into the next bar', q(15.6, dembow) === 16, `${q(15.6, dembow)}`);
+  check('a spacing grid still behaves exactly as it did', q(7, 2) === 8 && q(6.4, 2) === 6);
+
+  check('a locked round gets a readable block length', blockSteps(dembow) === 2);
+  check('and a spacing round is unchanged', blockSteps(2) === 2 && blockSteps(1) === 1);
+
+  // Only the drums. Locking the bass would turn a groove into a template.
+  const locked = REGGAETON.rounds.filter((r) => isLocked(r.grid ?? 2));
+  check('exactly one round is locked', locked.length === 1, locked.map((r) => r.id).join(','));
+  check('and it is not a round that holds notes', locked.every((r) => !r.sustains));
+
+  // Neither she nor a decoded link may talk it out of its rhythm.
+  setRounds(REGGAETON.rounds);
+  const t = new Track({ bars: 2 });
+  check('the track picks the lock up from the palette', isLocked(t.gridFor('r1')));
+  check('setGrid refuses to unlock it', t.setGrid('r1', 1) === false);
+  check('and it is still locked afterwards', isLocked(t.gridFor('r1')));
+  check('an unlocked round still toggles', t.setGrid('r2', 1) === true);
+
+  // A tap anywhere near the beat is recorded ON the beat.
+  const slot = t.record('r1', 0, 2.4);
+  check('a sloppy tap is recorded on the pattern', onGrid(slot, dembow), `landed on ${slot}`);
+  setRounds(DEFAULT_ROUNDS);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

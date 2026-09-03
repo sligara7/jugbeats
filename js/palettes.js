@@ -247,8 +247,101 @@ export const HAUNTED = {
 };
 
 // ---------------------------------------------------------------------------
+// Reggaetón — the first palette whose identity is a RHYTHM. Id 3 forever.
+// ---------------------------------------------------------------------------
 
-export const PALETTES = [PHONK, CALM, HAUNTED];
+/**
+ * THE DEMBOW, as positions in a sixteen-step bar.
+ *
+ * A tresillo — 3+3+2 — laid twice across the bar: 0, 3, 6, 8, 11, 14. It is the
+ * one pattern the whole genre is built on, and STEPS 3 AND 11 ARE NOT ON THE
+ * EIGHTH GRID, which is why the beat was literally unreachable in this game
+ * until the grid learned to be a list of positions rather than a spacing.
+ */
+const DEMBOW = [0, 3, 6, 8, 11, 14];
+
+export const REGGAETON = {
+  id: 3,
+  key: 'reggaeton',
+  home: 'reggaeton/',
+  name: 'JugDembow',
+  tagline: 'Turn your phone sideways, tap the blocks, and you cannot miss the beat.',
+
+  bpm: 96,          // the genre sits around 88-100
+  swing: 0,         // dead straight; phonk's shuffle would be badly wrong here
+  room: null,       // close and dry, like the records
+  scale: MINOR_PENTATONIC,
+  scaleName: 'minor pentatonic',
+
+  /**
+   * THE FIRST PALETTE TO LOCK A RHYTHM, and it is the scale lock's idea applied
+   * to time (dec:idea-reggaeton-palette).
+   *
+   * Reggaetón is a RHYTHM identity rather than a sound identity: phonk is
+   * whatever she plays played with those sounds, but there is only one dembow
+   * and everyone plays it. Left free, a nine-year-old would miss it and missing
+   * it produces "not reggaetón" rather than her own take on it.
+   *
+   * So round one's grid IS the dembow. Whatever she taps lands where the pattern
+   * wants, and she cannot play a wrong beat — the same promise the pentatonic
+   * makes about notes, kept the same way: by not offering the wrong answer.
+   *
+   * ONLY THE DRUMS ARE LOCKED. The hats stay on eighths so she can choose a
+   * straight or sparse pattern, and the bass and melody are free, because
+   * reggaetón basslines are syncopated in their own way and locking them would
+   * turn a groove into a template.
+   */
+  rounds: [
+    {
+      id: 'r1', label: 'Dembow', full: 'Kick & Snare', sustains: false, click: true,
+      grid: DEMBOW, gridName: 'dembow',
+      lanes: [{ voice: 'kick', name: 'KICK' }, { voice: 'snare', name: 'SNARE' }],
+    },
+    {
+      id: 'r2', label: 'Hats', full: 'Hats & Clap', sustains: false, click: false,
+      lanes: [{ voice: 'hat', name: 'HAT' }, { voice: 'clap', name: 'CLAP' }],
+    },
+    {
+      id: 'r3', label: 'Bass', full: 'The Bass', sustains: true, click: false,
+      lanes: [
+        { voice: 'bass', degree: 0, name: 'ROOT' },
+        { voice: 'bass', degree: 2, name: '4th' },
+        { voice: 'bass', degree: 3, name: '5th' },
+        { voice: 'bass', degree: 4, name: '♭7' },
+      ],
+    },
+    {
+      id: 'r4', label: 'Melody', full: 'The Melody', sustains: true, click: false,
+      lanes: [
+        { voice: 'lead', degree: 0, name: 'ROOT' },
+        { voice: 'lead', degree: 1, name: '♭3' },
+        { voice: 'lead', degree: 3, name: '5th' },
+        { voice: 'lead', degree: 5, name: '8ve' },
+      ],
+    },
+  ],
+
+  /**
+   * IT REUSES THE BAKED KIT AND THE PITCHED VOICES SHE ALREADY HAS, which makes
+   * this the cheapest palette in the project by a distance — the owner's
+   * instinct that reggaetón would be straightforward, and correct as far as the
+   * SOUNDS go. Everything that makes it a different genre is in the table above:
+   * the tempo, the absence of swing, and the lock.
+   *
+   * A dedicated kit would be better — these drums are voiced for phonk and want
+   * to be drier and rounder here — and that is a row of work, not a rewrite.
+   */
+  kit: new URL('../kit/manifest.json', import.meta.url).pathname,
+  pitched: {
+    bass: { render: (sr, hz, s, o) => render808(sr, hz, s, o), octaves: 0 },
+    lead: { render: (sr, hz, s, o) => renderLead(sr, hz, s, o), octaves: LEAD_OCTAVES },
+  },
+  drone: (sr) => renderPad(sr, {}),
+};
+
+// ---------------------------------------------------------------------------
+
+export const PALETTES = [PHONK, CALM, HAUNTED, REGGAETON];
 
 /** By permanent id, for the link. Unknown ids fall back to phonk rather than
  *  failing — a link from a future build should degrade, never break. */

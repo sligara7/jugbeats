@@ -43,6 +43,16 @@ const PAGES = [
     hint: 'turn your volume up — and if it stays quiet, tap “no sound?” after you start',
   },
   {
+    dir: 'reggaeton',
+    palette: 'reggaeton',
+    title: 'JugDembow — you cannot miss the beat',
+    ogTitle: 'JugDembow',
+    ogDescription:
+      'Turn your phone sideways, tap the blocks, and you cannot miss the beat. Then send it back.',
+    h1: 'JugDembow',
+    hint: 'the first round snaps to the dembow — tap anywhere near it',
+  },
+  {
     dir: 'haunted',
     palette: 'haunted',
     title: 'JugHaunt — make something not quite right',

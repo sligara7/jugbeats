@@ -10,7 +10,7 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt, setRounds } from './track.js';
+import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt, setRounds, isLocked } from './track.js';
 import { setScale } from './dsp.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
@@ -354,7 +354,14 @@ function refresh() {
     lenBtn.textContent = composite === bars
       ? `${bars} bars`
       : `${bars} bars · meets every ${composite}`;
-    gridBtn.textContent = track.gridFor(round.id) === FINE_GRID ? '1/16 notes' : '1/8 notes';
+    // A LOCKED ROUND SAYS SO. Its rhythm belongs to the palette, so the chip
+    // stops being a toggle and becomes a label — which is the affordance half of
+    // the lock: she should be able to see why her taps are landing where they do.
+    const g = track.gridFor(round.id);
+    gridBtn.textContent = isLocked(g)
+      ? (round.gridName ?? 'locked')
+      : g === FINE_GRID ? '1/16 notes' : '1/8 notes';
+    gridBtn.dataset.locked = isLocked(g) ? 'true' : 'false';
   }
 
   const pp = el('playpause');
@@ -560,6 +567,10 @@ el('grid').addEventListener('click', (e) => {
   e.stopPropagation();
   const round = session.round;
   if (!round) return;
+  if (isLocked(track.gridFor(round.id))) {
+    flash(`the ${round.gridName ?? 'beat'} — your taps land on it, you cannot miss`);
+    return;
+  }
   const fine = track.gridFor(round.id) !== FINE_GRID;
   track.setGrid(round.id, fine ? FINE_GRID : GRID);
   flash(fine
