@@ -104,8 +104,15 @@ node test/timing.mjs          # the beat does not drift
 node test/link.mjs            # old links still play
 node test/session.mjs         # the loop pedal behaves like a loop pedal
 node test/scale.mjs           # no two notes she can reach can clash
+node test/midi.mjs            # her track leaves as a file a DAW will read
+node test/palette.mjs         # styles do not cross wires
+node test/panel.mjs           # the help panel can always be left
+
+node forge/calm.mjs calm.wav  # hear the ethereal palette without the game
+node forge/pages.mjs          # regenerate ethereal/index.html from index.html
 
 python3 -m http.server 8137   # then open http://localhost:8137
+                              #   /ethereal/ for the calm one
 ```
 
 On a desktop the lanes are **F J** on the drums, **D F J K** when there are four.
@@ -113,6 +120,15 @@ On a desktop the lanes are **F J** on the drums, **D F J K** when there are four
 The files in `kit/` are generated but committed, because GitHub Pages serves
 the repository as-is with no build step. `js/dsp.js` is the source of truth;
 `node forge/build-kit.mjs` regenerates them byte for byte. Never hand-edit them.
+
+`ethereal/index.html` is generated the same way, from `index.html`, by
+`node forge/pages.mjs`. Edit `index.html` and re-run it; never edit the output.
+
+**One engine, several styles.** A style is a palette — which voices exist, which
+two arrive in which round, the tempo, the swing, the room. `/` is the phonk game
+and `/ethereal/` is the calm one, sharing every byte of the engine between them.
+Which palette a track was made with travels inside the link, because round ids
+are positional: without it, someone's handpan would come back as a kick.
 
 ## Design
 

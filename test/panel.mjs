@@ -1,4 +1,4 @@
-// The help panel can always be left.
+// ver:panel-can-always-be-left — the help panel can always be left.
 //
 // Run:  node test/panel.mjs
 //

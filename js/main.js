@@ -10,12 +10,43 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt } from './track.js';
+import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt, setRounds } from './track.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
-import { trackFromLocation, share } from './link.js';
+import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
+import { saveMidi } from './midi.js';
+import { byId, byKey, PHONK, paletteFromLocation } from './palettes.js';
 
 const el = (id) => document.getElementById(id);
+
+/**
+ * WHICH STYLE THIS PAGE IS (dec:styles-are-palettes), settled before anything
+ * else exists because the round list depends on it and everything depends on
+ * the round list.
+ *
+ * A LINK WINS OVER THE QUERY STRING. If someone sends a calm track, opening it
+ * has to give you the calm game whatever `?p=` says — otherwise her handpan
+ * comes out as a kick, which is exactly the failure the palette byte was added
+ * to prevent. The id is read straight out of the link's fourth byte, because
+ * decoding it properly would need the rounds that are not chosen yet.
+ */
+function whichPalette() {
+  // 1. A LINK WINS OVER EVERYTHING. If someone sends a calm track, opening it
+  //    has to give the calm game whatever page it lands on — otherwise the
+  //    handpan comes out as a kick, which is the failure the palette byte was
+  //    added to prevent. Read straight from the link's fourth byte, because
+  //    decoding it properly would need the rounds that are not chosen yet.
+  if (location.hash) return byId(paletteIdFromLocation());
+  // 2. THE PAGE ITSELF. /jugbeats/ethereal/ declares data-palette on <html>,
+  //    which is what makes a clean URL possible without a query string.
+  const declared = document.documentElement.dataset.palette;
+  if (declared) return byKey(declared);
+  // 3. ?p=calm, kept as an alias so one deployment can serve either way.
+  return paletteFromLocation();
+}
+
+const palette = whichPalette();
+setRounds(palette.rounds);
 
 /**
  * Ask iOS for a playback audio session BEFORE the AudioContext is built.
@@ -38,13 +69,14 @@ function requestPlaybackSession() {
 const sessionAsked = requestPlaybackSession();
 
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
-const voices = new Voices(ctx);
+const voices = new Voices(ctx, { palette });
 
 // A track may already be in the address bar, because someone sent one. If so it
 // is hers to hear and take apart, so every round is open from the start.
 const incoming = trackFromLocation();
 const track = incoming ?? new Track();
-const clock = new Clock(ctx, { bpm: track.bpm });
+track.paletteId = palette.id;
+const clock = new Clock(ctx, { bpm: track.bpm, swing: palette.swing });
 const session = new Session(track);
 if (incoming) session.openEverything();
 
@@ -219,7 +251,16 @@ clock.onSchedule((from, to, timeOf) => {
 function transportLabel() {
   if (session.state === 'recording') return 'NEXT ▸';
   if (session.state === 'counting') return '…';
-  if (session.state === 'done') return 'DONE';
+  // It used to say DONE, and pressing it did nothing at all — the label knew
+  // about a state the handler did not. What the end of a whole track is FOR is
+  // sending it: the game arrived over WhatsApp and what she made goes back the
+  // same way (dec:track-in-the-url), so the last press is the one that does it.
+  //
+  // It shares a word with the strip's "send ▸", which rule:one-word-one-meaning
+  // exists to prevent. The rule's harm is two controls saying one word and
+  // MEANING different things; these are one meaning reachable from two places,
+  // which is the opposite problem.
+  if (session.state === 'done') return 'SEND ▸';
   if (!session.tempoIsSet) return `TAP ${session.tapsSoFar}/4`;
   return 'START';
 }
@@ -272,6 +313,11 @@ function refresh() {
   pp.textContent = clock.running ? 'pause' : 'play';
   pp.dataset.state = clock.running ? 'running' : 'stopped';
 
+  // Only once the whole track is finished, and it stays out of the way until
+  // then. A shared link arrives with every round already accepted, so the
+  // grown-up who opens her beat on a laptop has it immediately.
+  el('midi').hidden = !ROUNDS.every((r) => track.accepted.has(r.id));
+
   const undo = resetAction();
   el('reset').hidden = undo === null;
   if (undo) {
@@ -315,6 +361,11 @@ el('transport').addEventListener('click', (e) => {
   e.stopPropagation();
   if (session.state === 'recording') {
     session.stop();
+  } else if (session.state === 'done') {
+    // Not awaited, and it must not be: the share sheet has to be opened from
+    // inside this gesture or iOS refuses it, and sendTrack calls share() before
+    // its first await.
+    sendTrack();
   } else if (session.state === 'tempo' && session.tempoIsSet) {
     // Count her in from the top of the next bar, so the count-in itself lands
     // musically rather than wherever she happened to press.
@@ -432,13 +483,34 @@ el('grid').addEventListener('click', (e) => {
   refresh();
 });
 
-el('share').addEventListener('click', async (e) => {
-  e.stopPropagation();
+/**
+ * Send her track on. Reachable from the strip at any time, and from the big
+ * button once the whole track is finished — one act, two doors.
+ */
+async function sendTrack() {
   if (track.isEmpty()) { flash('play something first'); return; }
   const how = await share(track);
   if (how === 'shared') flash('sent');
   else if (how === 'copied') flash('link copied — paste it to someone');
   else flash('could not share, sorry');
+}
+
+el('share').addEventListener('click', (e) => {
+  e.stopPropagation();
+  sendTrack();
+});
+
+/**
+ * The quiet one (dec:idea-midi-out). Her music leaves the game and enters
+ * software that takes it seriously — which is the strongest available version of
+ * what this whole thing is for, and is almost certainly pressed by a parent.
+ */
+el('midi').addEventListener('click', (e) => {
+  e.stopPropagation();
+  saveMidi(track).then((how) => {
+    if (how === 'shared' || how === 'saved') flash('midi file saved');
+    else flash('could not save the midi, sorry');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -672,10 +744,29 @@ checkOrientation();
 stage.mount(track);
 refresh();
 
-if (incoming) el('gate-title').textContent = 'someone made you a beat';
+// Say which game this is — but only when the PAGE does not already know.
+// /jugbeats/ethereal/ ships with its own title and gate heading, which is what
+// a scraper and the tab both see before any of this runs; overwriting them here
+// would make the generated page's own metadata pointless.
+if (!document.documentElement.dataset.palette) {
+  document.title = `${palette.name} — ${palette.tagline}`;
+}
+if (!incoming && !document.documentElement.dataset.palette) {
+  el('gate-title').textContent = palette.name;
+}
+else el('gate-title').textContent = palette.id === 0
+  ? 'someone made you a beat'
+  : 'someone made you something';
 
 voices.load().then(() => {
-  for (const inst of ['bass', 'lead']) {
+  // The palette's own voices, not a hardcoded pair.
+  //
+  // KNOWN LIMIT: the link's shaping slots are still named `bass` and `lead`
+  // (SHAPED in js/link.js), so only a palette that uses those names round-trips
+  // its shaping numbers. The calm palette's controls work in the session and are
+  // dropped by the link. Fixing it means shaping travelling by INDEX rather than
+  // by name, which is another format version and is not worth one on its own.
+  for (const inst of Object.keys(palette.pitched)) {
     if (track.shaping[inst] && Object.keys(track.shaping[inst]).length) {
       voices.setShaping(inst, track.shaping[inst]);
     }

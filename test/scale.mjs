@@ -1,4 +1,4 @@
-// She cannot play a wrong note — and now that holds for chords too.
+// ver:no-wrong-notes — she cannot play a wrong note, chords included.
 //
 // Run:  node test/scale.mjs
 //

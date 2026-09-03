@@ -70,19 +70,30 @@ export function quantise(atStep, grid = GRID) {
 /**
  * The rounds, in the order she plays them (dec:two-thumbs-loop-pedal).
  *
- * Two sounds each, one per thumb. Kick and snare first because those two alone
- * ARE a beat and everything else is decoration. Hats and cowbell second because
- * that is what arrives next in the phonk she listens to — a tom would have made
- * it a drum lesson (dec:idea-which-two-sounds-per-round).
+ * NOW OWNED BY THE PALETTE (dec:styles-are-palettes). The list used to live here
+ * as a constant, which was correct while there was one style and wrong the
+ * moment there were several: what changes between phonk and the calm palette is
+ * exactly this table plus the voices behind it.
  *
- * `sustains` is whether holding a key means anything. You do not hold a drum:
- * a drum is a struck object and its length is its own. A pitched note has a
- * length the player chooses, which is what holding is for.
+ * `let` rather than `const` ON PURPOSE. ES modules give importers a LIVE binding,
+ * so every `import { ROUNDS }` in the project sees the swap without any of them
+ * having to learn that palettes exist. The alternative — passing the round list
+ * through session, track, stage, link and midi — would have touched every file
+ * to express one fact.
  *
- * `click` marks the round the metronome is needed for. It retires after round
- * one, because from then on her own beat is the click.
+ * Two sounds per round, one per thumb. `sustains` is whether holding a key means
+ * anything: you do not hold a drum, but you do hold a singing bowl, which is why
+ * this belongs to the instrument rather than to the round position. `click`
+ * marks the round the metronome is needed for; it retires after round one,
+ * because from then on her own beat is the click.
  */
-export const ROUNDS = [
+/**
+ * The phonk rounds — the default, and the ones her game has always had.
+ *
+ * EXPORTED so js/palettes.js can point PHONK at these rather than restating
+ * them. There is exactly one copy of this list and it is here.
+ */
+export const DEFAULT_ROUNDS = [
   {
     id: 'r1', label: 'Beat', full: 'Kick & Snare', sustains: false, click: true,
     lanes: [{ voice: 'kick', name: 'KICK' }, { voice: 'snare', name: 'SNARE' }],
@@ -126,6 +137,22 @@ export const ROUNDS = [
     ],
   },
 ];
+
+export let ROUNDS = DEFAULT_ROUNDS;
+
+/**
+ * Point the engine at a palette's rounds.
+ *
+ * Call ONCE, before anything reads a track. Swapping palettes mid-session would
+ * leave recorded notes indexed against lanes that no longer mean the same thing.
+ */
+export function setRounds(rounds) {
+  if (!Array.isArray(rounds) || rounds.length !== DEFAULT_ROUNDS.length) {
+    throw new Error(`a palette must define exactly ${DEFAULT_ROUNDS.length} rounds`);
+  }
+  ROUNDS = rounds;
+  return ROUNDS;
+}
 
 export const roundById = (id) => ROUNDS.find((r) => r.id === id);
 
@@ -211,6 +238,15 @@ export class Track {
     this.shaping = { bass: {}, lead: {} };
     /** The tempo she tapped. Part of the track: it is hers, not the game's. */
     this.bpm = 100;
+
+    /**
+     * Which palette this track was made with (dec:styles-are-palettes).
+     *
+     * Part of the track rather than of the page, because round ids are
+     * POSITIONAL in the link: the same bytes read under a different palette put
+     * her handpan where a kick should be. Travels in the link from v6 on.
+     */
+    this.paletteId = 0;
   }
 
   /** The grid this round lands on, in sixteenths. 2 = eighths, 1 = sixteenths. */

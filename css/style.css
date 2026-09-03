@@ -164,6 +164,21 @@ html, body {
 }
 .clear:active { background: rgba(255, 255, 255, 0.28); color: var(--ink); }
 
+/* Quieter than anything else on the screen, on purpose (dec:idea-midi-out).
+   This is an adult's button on a child's game: whoever wants it will find it,
+   and it must never pull her eye away from "send". No border, small, dim. */
+.midi {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(244, 238, 252, 0.4);
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+.midi:active { color: var(--ink); }
+
 .chip {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.22);

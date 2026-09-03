@@ -9,5 +9,9 @@
 # source of truth — the recipes are in js/dsp.js, and `node forge/build-kit.mjs`
 # regenerates these byte-for-byte. Never hand-edit them.
 
-demo.wav
 node_modules/
+
+# Rendered demos — forge/demo.mjs and forge/calm.mjs. Several megabytes each,
+# and both regenerate in seconds from js/dsp.js and js/ethereal.js.
+*.wav
+!kit/*.wav

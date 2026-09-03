@@ -1,4 +1,4 @@
-// The loop pedal behaves like a loop pedal.
+// ver:loop-pedal-behaves — the loop pedal behaves like a loop pedal.
 //
 // Run:  node test/session.mjs
 //

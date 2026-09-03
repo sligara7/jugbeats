@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>All-night playback spike</title>
+
+<!--
+  SPIKE — dec:idea-all-night-playback. Disposable. Delete once it has answered.
+
+  THE QUESTION: can a static web page keep sounding for eight hours on a locked
+  iPhone? The sleep game's whole objective depends on yes, and the game engine as
+  built cannot do it — its clock is a setInterval(25ms) lookahead scheduler, which
+  is the first thing a browser throttles when a tab goes to the background.
+
+  WHAT THIS TESTS INSTEAD: the escape hatch. Looping AudioBufferSourceNodes run on
+  the audio thread, so once started they need NO JavaScript at all. Three of them
+  at coprime lengths also give the aperiodic drift for free, which is the other
+  half of what the sleep game wants.
+
+  HOW IT PROVES ANYTHING. Two clocks are compared once a second:
+
+    WALL TIME     Date.now() — keeps running even if this tab is frozen.
+    AUDIO TIME    ctx.currentTime — advances ONLY while the audio context is
+                  actually running. If iOS suspends it, this stops.
+
+  Their DIFFERENCE is the whole measurement. It should stay near zero all night.
+  A drift of N seconds means the audio died for N seconds, whether or not anyone
+  was awake to hear it. The log survives a reload in localStorage, so the answer
+  is still there in the morning even if Safari reloaded the page.
+
+  The logger itself is throttled in the background — that is expected and does not
+  matter. Gaps in the log are not evidence of anything; DRIFT is.
+-->
+
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 20px;
+    background: #0d0a14; color: #f4eefc;
+    font: 15px/1.5 -apple-system, system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .sub { opacity: .55; font-size: 13px; margin: 0 0 18px; }
+  button {
+    appearance: none; font: inherit; font-size: 16px;
+    padding: 14px 22px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #e0407a; background: transparent; color: #e0407a;
+  }
+  button:disabled { opacity: .35; }
+  .num { font-variant-numeric: tabular-nums; }
+  .big { font-size: 34px; font-weight: 600; margin: 16px 0 2px; }
+  .label { font-size: 12px; opacity: .5; text-transform: uppercase; letter-spacing: .08em; }
+  .verdict { padding: 12px 14px; border-radius: 10px; margin: 16px 0; font-weight: 600; }
+  .ok   { background: #10391f; color: #7ee2a4; }
+  .bad  { background: #3d1220; color: #ff8fae; }
+  .wait { background: #1b1826; color: #9d95b5; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td { padding: 3px 0; border-bottom: 1px solid #ffffff14; }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  pre {
+    background: #ffffff0a; padding: 10px; border-radius: 8px;
+    font-size: 11px; max-height: 240px; overflow: auto; white-space: pre-wrap;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .row button { font-size: 13px; padding: 9px 14px; border-color: #ffffff44; color: #ffffffaa; }
+</style>
+</head>
+<body>
+
+<h1>All-night playback spike</h1>
+<p class="sub">Start it, lock the phone, leave it. Read the drift in the morning.</p>
+
+<button id="go">start</button>
+
+<div id="panel" hidden>
+  <div class="big num" id="drift">0.0s</div>
+  <div class="label">audio time lost</div>
+
+  <div class="verdict wait" id="verdict">running…</div>
+
+  <table>
+    <tr><td>elapsed (wall)</td><td class="num" id="wall">—</td></tr>
+    <tr><td>elapsed (audio)</td><td class="num" id="audio">—</td></tr>
+    <tr><td>worst single gap</td><td class="num" id="worst">—</td></tr>
+    <tr><td>context state</td><td id="state">—</td></tr>
+    <tr><td>suspend events</td><td class="num" id="suspends">0</td></tr>
+    <tr><td>backgrounded</td><td class="num" id="hides">0</td></tr>
+  </table>
+
+  <div class="row">
+    <button id="copy">copy log</button>
+    <button id="reset">clear and start over</button>
+  </div>
+
+  <pre id="log"></pre>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Persistence. The log has to survive Safari reloading the page under memory
+// pressure, which is itself one of the failure modes worth catching.
+// ---------------------------------------------------------------------------
+
+const KEY = 'allnight-spike-v1';
+let S = load();
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch { return null; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// The sound. Pink-ish noise plus two quiet sine layers, at coprime loop lengths.
+//
+// Deliberately close to what the sleep game would actually do rather than a test
+// tone: if a bare oscillator survives the night but a three-buffer graph does
+// not, the spike would have answered the wrong question. Quiet on purpose — this
+// plays for eight hours next to a sleeping person.
+// ---------------------------------------------------------------------------
+
+const LOOPS = [31, 37, 41];  // seconds, coprime — 47,027s before the three realign
+const ROOT  = 130.81;        // C3, voiced up: a phone speaker cannot do C2
+const BREATH_HZ = 0.1;       // the ten-second swell — six breaths a minute
+
+/**
+ * THE FIRST VERSION OF THIS PULSED AUDIBLY EVERY ELEVEN SECONDS, and the owner
+ * heard it within minutes. Worth recording, because the mistake is instructive:
+ * each tone buffer carried ONE swell across its whole length, which made the
+ * buffer's loop length and the breathing rate the same number. Every seam was
+ * therefore also an amplitude peak — a periodic, attention-catching event, which
+ * is precisely what a sleep sound must not have.
+ *
+ * THE FIX IS TO SEPARATE THEM. Buffer length now decides only when CONTENT
+ * repeats, and is made inaudible: a tone buffer holds a whole number of wave
+ * cycles so its loop point is mathematically continuous, and the noise buffer
+ * folds its own overrun back over its head in an equal-power crossfade so there
+ * is no seam to hear. The breathing is then a single 0.1 Hz oscillator on the
+ * output gain — continuous, independent of every loop length, and running on the
+ * audio thread where nothing can throttle it.
+ */
+
+let ctx = null, started = null, worst = 0, worstCarried = 0, suspends = 0, hides = 0, timer = null;
+
+/**
+ * Pink-ish noise that loops with NO AUDIBLE SEAM.
+ *
+ * Pink rather than white because the evidence prefers it — 82% of pink-noise
+ * sleep studies reported positive outcomes against 33% for white — and because
+ * the 1/f tilt takes out the high end that grates over hours.
+ *
+ * A FILTER, NOT A ROW-SUM. The first version used Voss-McCartney: several random
+ * rows updating at halving rates. Measured, it put a 12x sample step exactly at
+ * the loop point, because the rows all re-roll together at sample indices
+ * divisible by large powers of two and the buffer length is one of those. A
+ * click every 31 seconds, all night. Paul Kellet's pink filter has no special
+ * indices — every step is an ordinary noise step — so the seam cannot stand out.
+ *
+ * The seamlessness itself: generate `n + f` samples, then fold the overrun back
+ * across the head with an equal-power crossfade, so the last sample of the loop
+ * is followed by material that genuinely continued from it. Fading both ends to
+ * silence instead — the obvious approach — would put a hole in the sound every
+ * time round, which is worse than a click.
+ */
+function pinkBuffer(seconds) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * seconds);
+  const f = Math.floor(sr * 2);            // two-second crossfade
+  const buf = ctx.createBuffer(2, n, sr);
+
+  for (let ch = 0; ch < 2; ch++) {
+    const raw = new Float32Array(n + f);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < n + f; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + w * 0.0555179;
+      b1 = 0.99332 * b1 + w * 0.0750759;
+      b2 = 0.96900 * b2 + w * 0.1538520;
+      b3 = 0.86650 * b3 + w * 0.3104856;
+      b4 = 0.55000 * b4 + w * 0.5329522;
+      b5 = -0.7616 * b5 - w * 0.0168980;
+      raw[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+      b6 = w * 0.115926;
+    }
+
+    const d = buf.getChannelData(ch);
+    d.set(raw.subarray(0, n));
+    for (let j = 0; j < f; j++) {
+      const th = (Math.PI / 2) * (j / f);
+      d[j] = raw[j] * Math.sin(th) + raw[n + j] * Math.cos(th);
+    }
+  }
+  return buf;
+}
+
+/**
+ * A sustained tone whose loop is EXACTLY seamless, because the buffer holds a
+ * whole number of wave cycles. The last sample runs into the first with no phase
+ * jump at all, so however many thousand times it comes round there is nothing to
+ * hear. Constant amplitude — the breathing is applied downstream, once, to
+ * everything, rather than baked in here per layer.
+ *
+ * A second partial a twelfth up at low level, slightly detuned, so eight hours of
+ * it is not eight hours of a test tone.
+ */
+function toneBuffer(seconds, hz) {
+  const sr = ctx.sampleRate;
+  // Round to a whole number of cycles: this is what makes the seam vanish.
+  const cycles = Math.max(1, Math.round(seconds * hz));
+  const n = Math.round((cycles / hz) * sr);
+  const buf = ctx.createBuffer(2, n, sr);
+
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    // Detune the two channels a hair apart for width. Both stay whole-cycle.
+    const wob = ch === 0 ? 0 : 1;
+    for (let i = 0; i < n; i++) {
+      const ph = (2 * Math.PI * cycles * i) / n;
+      d[i] = 0.5 * Math.sin(ph)
+           + 0.12 * Math.sin(ph * 3 + wob * 0.4);
+    }
+  }
+  return buf;
+}
+
+/**
+ * The output stage: everything meets here, and here is the only place anything
+ * changes level. One 0.1 Hz oscillator drives the gain — a ten-second swell,
+ * six breaths a minute, which is where heart rate and breathing come into phase.
+ *
+ * It runs entirely on the audio thread. No JavaScript is involved once started,
+ * which is the property this whole spike exists to test.
+ */
+let bus = null;
+
+function makeBus(depth = 0.25, level = 0.6) {
+  bus = ctx.createGain();
+  bus.gain.value = level * (1 - depth);
+
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = BREATH_HZ;
+  const amount = ctx.createGain();
+  amount.gain.value = level * depth;
+  lfo.connect(amount).connect(bus.gain);
+  lfo.start();
+
+  bus.connect(ctx.destination);
+  return bus;
+}
+
+function play(buffer, gain) {
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  src.connect(g).connect(bus);
+  src.start();
+  return src;
+}
+
+// ---------------------------------------------------------------------------
+// Keeping it alive. A silent looping <audio> element makes iOS treat this as
+// media playback rather than as a page, which is the usual lever for surviving
+// the lock screen. Whether it actually works is the thing being measured.
+// ---------------------------------------------------------------------------
+
+function silentAudioElement() {
+  // A tiny valid WAV of silence, looped. Data URI so there is no second request.
+  const el = document.createElement('audio');
+  el.loop = true;
+  el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
+  el.volume = 0.001;
+  document.body.appendChild(el);
+  el.play().catch(() => log('silent <audio> refused to play'));
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: 'All-night spike' });
+    navigator.mediaSession.playbackState = 'playing';
+  }
+  return el;
+}
+
+// ---------------------------------------------------------------------------
+
+function log(msg) {
+  const at = new Date().toISOString().slice(11, 19);
+  S.lines.push(`${at}  ${msg}`);
+  if (S.lines.length > 400) S.lines.splice(0, S.lines.length - 400);
+  save();
+  render();
+}
+
+function el(id) { return document.getElementById(id); }
+const fmt = (s) => {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(Math.floor(s % 60)).padStart(2, '0')}s`;
+};
+
+function tick() {
+  if (!ctx || started === null) return;
+
+  const wall = (Date.now() - S.startedWallMs) / 1000;
+  const audio = ctx.currentTime - started;
+  // Total elapsed since the FIRST start, so a reload does not reset the clock
+  // the verdict is judged against.
+  const totalWall = (Date.now() - S.firstStartMs) / 1000;
+  // Negative drift means the audio clock ran ahead of the wall clock, which
+  // happens under a virtual clock and means nothing was lost. Floor it rather
+  // than letting it offset a real gap later.
+  const drift = Math.max(0, wall - audio) + S.lostToReloads;
+
+  // A single gap bigger than the last one is the interesting event. The logger
+  // is throttled in the background, so a jump here is one gap OR several merged
+  // — either way the total drift is the number that matters.
+  const step = drift - S.lastDrift;
+  if (step > 1.5) {
+    worst = Math.max(worst, step, worstCarried);
+    S.worst = worst;
+    log(`audio lost ${step.toFixed(1)}s (total ${drift.toFixed(1)}s)`);
+  }
+  S.lastDrift = drift;
+  S.wall = wall;
+  S.totalWall = totalWall;
+  S.audio = audio;
+  save();
+
+  el('drift').textContent = `${drift.toFixed(1)}s`;
+  el('wall').textContent = fmt(totalWall) + (S.reloads ? ` (${S.reloads} reload${S.reloads > 1 ? 's' : ''})` : '');
+  el('audio').textContent = fmt(audio);
+  el('worst').textContent = `${(S.worst || 0).toFixed(1)}s`;
+  el('state').textContent = ctx.state;
+  el('suspends').textContent = suspends;
+  el('hides').textContent = hides;
+
+  const v = el('verdict');
+  if (S.reloads > 0) {
+    // The page reloading IS the failure, whatever the drift says afterwards:
+    // a reloaded tab was not playing, and needed a human to notice.
+    v.className = 'verdict bad';
+    v.textContent = `the page reloaded ${S.reloads}× — it stopped playing and needed reopening.`;
+  } else if (totalWall < 120) {
+    v.className = 'verdict wait';
+    v.textContent = 'running — leave it at least an hour, ideally all night';
+  } else if (drift < 2) {
+    v.className = 'verdict ok';
+    v.textContent = `held ${fmt(totalWall)} with no loss. The buffer-loop approach works.`;
+  } else if (drift < totalWall * 0.02) {
+    v.className = 'verdict ok';
+    v.textContent = `held ${fmt(totalWall)}, lost ${drift.toFixed(0)}s total — brief interruptions only.`;
+  } else {
+    v.className = 'verdict bad';
+    v.textContent = `lost ${fmt(drift)} of ${fmt(totalWall)}. A locked page cannot carry the night.`;
+  }
+}
+
+function render() {
+  el('log').textContent = S.lines.slice(-60).join('\n');
+}
+
+async function start() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+
+  // A RELOAD IS ITSELF A FAILURE, so the record has to outlive one. Safari can
+  // reload a backgrounded tab under memory pressure, and a page that reloaded
+  // stopped playing — if the run's own start time were reset here, that would
+  // come back looking like a healthy short run instead of the answer.
+  const prior = S && S.firstStartMs ? S : null;
+  S = {
+    firstStartMs: prior ? prior.firstStartMs : Date.now(),
+    startedWallMs: Date.now(),
+    reloads: prior ? prior.reloads : 0,
+    lostToReloads: prior ? prior.lostToReloads : 0,
+    lastDrift: 0,
+    worst: prior ? prior.worst : 0,
+    lines: prior ? prior.lines : [],
+  };
+  worstCarried = S.worst;
+
+  started = ctx.currentTime;
+  worst = 0;
+
+  makeBus();
+  play(pinkBuffer(LOOPS[0]), 0.05);
+  play(toneBuffer(LOOPS[1], ROOT), 0.035);
+  play(toneBuffer(LOOPS[2], ROOT * 1.5), 0.025);  // the fifth above — no third
+
+  silentAudioElement();
+
+  log(`started — sr ${ctx.sampleRate}, loops ${LOOPS.join('/')}s, breath ${BREATH_HZ}Hz, ${navigator.userAgent.slice(0, 50)}`);
+
+  el('go').disabled = true;
+  el('go').textContent = 'running';
+  el('panel').hidden = false;
+
+  timer = setInterval(tick, 1000);
+  tick();
+}
+
+el('go').addEventListener('click', start);
+
+el('copy').addEventListener('click', () => {
+  const text = [
+    `wall ${fmt(S.wall || 0)}  audio ${fmt(S.audio || 0)}  drift ${(S.lastDrift || 0).toFixed(1)}s  worst ${(S.worst || 0).toFixed(1)}s`,
+    ...S.lines,
+  ].join('\n');
+  navigator.clipboard?.writeText(text);
+  el('copy').textContent = 'copied';
+  setTimeout(() => (el('copy').textContent = 'copy log'), 1500);
+});
+
+el('reset').addEventListener('click', () => {
+  localStorage.removeItem(KEY);
+  location.reload();
+});
+
+// The two events worth counting. Neither is a failure by itself — the drift says
+// whether anything was actually lost.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hides++; log('backgrounded'); }
+  else { log(`foregrounded — context is ${ctx ? ctx.state : 'none'}`); ctx?.resume(); }
+});
+
+// A run that was in progress when this script loaded means SAFARI RELOADED THE
+// PAGE — which is one of the failures being hunted, and the one that would
+// otherwise be invisible in the morning. Count it, charge the silence to the
+// drift total, and restart the sound so the night is not lost from here.
+if (S && S.firstStartMs && S.wall > 30) {
+  const gap = Math.max(0, (Date.now() - S.startedWallMs) / 1000 - S.wall);
+  S.reloads = (S.reloads || 0) + 1;
+  S.lostToReloads = (S.lostToReloads || 0) + gap;
+  save();
+  el('panel').hidden = false;
+  el('verdict').className = 'verdict bad';
+  el('verdict').textContent = `the page reloaded — silent for about ${fmt(gap)}. Restarting.`;
+  render();
+  // Auto-resume needs no gesture only if the browser allows it; if it refuses,
+  // the reload count is still recorded and that is the finding.
+  start().catch(() => log('could not auto-restart after reload — needs a tap'));
+} else if (S && S.lines?.length) {
+  el('panel').hidden = false;
+  el('drift').textContent = `${(S.lastDrift || 0).toFixed(1)}s`;
+  el('wall').textContent = fmt(S.totalWall || S.wall || 0);
+  el('audio').textContent = fmt(S.audio || 0);
+  el('worst').textContent = `${(S.worst || 0).toFixed(1)}s`;
+  el('verdict').textContent = 'previous run — press start to run again';
+  render();
+} else {
+  S = { firstStartMs: 0, startedWallMs: 0, reloads: 0, lostToReloads: 0, lastDrift: 0, worst: 0, lines: [] };
+}
+</script>
+</body>
+</html>

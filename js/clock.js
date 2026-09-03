@@ -27,6 +27,17 @@ const LOOKAHEAD = 0.12;
 
 export const STEPS_PER_BAR = 16; // sixteenth notes
 
+/**
+ * How far the "and" of each beat leans late, as a fraction of a sixteenth.
+ * 0 is a drum machine; around a third is where phonk lives.
+ *
+ * EXPORTED SO THERE IS EXACTLY ONE OF THESE. The MIDI exporter has to place her
+ * notes at the same moments the player sounds them, and a second copy of this
+ * number would mean her track leaving the game with a different groove from the
+ * one she made — silently, and only noticeably to whoever opened the file.
+ */
+export const SWING = 0.32;
+
 export class Clock {
   /**
    * @param {AudioContext} ctx
@@ -40,7 +51,7 @@ export class Clock {
    * an unswung step and the groove would have quietly vanished. It delays the
    * "and" of each beat instead, which is what a human drummer does.
    */
-  constructor(ctx, { bpm = 138, swing = 0.32 } = {}) {
+  constructor(ctx, { bpm = 138, swing = SWING } = {}) {
     this.ctx = ctx;
     this.bpm = bpm;
     this.swing = swing;
