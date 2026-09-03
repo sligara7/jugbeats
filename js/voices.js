@@ -165,7 +165,6 @@ export class Voices {
     this.pad = toBuffer(this.ctx, this.palette.drone(sr), sr);
 
     this.renderPitched();
-    this.ready = true;
   }
 
   // -------------------------------------------------------------------------
@@ -223,32 +222,63 @@ export class Voices {
    * deliberately never called while a note is starting.
    */
   renderPitched() {
-    const sr = this.ctx.sampleRate;
     // THE BASS MOVES AND THE MELODY DOES NOT, which is how a band actually does
     // this. The bass states the chord — that is what makes the harmony audible
     // at all — while the melody stays in one scale and floats over the changes.
     // It is why a blues player uses a single pentatonic over a whole tune, and
     // it is what keeps every note she can press consonant against every chord.
-    //
-    // Transposing the melody too would give each chord its own parallel
-    // pentatonic, which wanders outside the key: shifting C minor pentatonic up
-    // to the flat sixth introduces a note the key does not contain, and the
-    // drone holding the root underneath would be arguing with it.
-    // Every note she can press, at every length she can hold it for. The chord
-    // dimension collapsed to one when the automatic progression came out, so
-    // this costs no more buffers than it did before.
+    this._renderPass(this.priorityLengths());
+    this.ready = true;
+    this._fillRemaining();
+  }
+
+  /**
+   * The lengths worth rendering for a voice.
+   *
+   * A NOTE SHORTER THAN ITS OWN ATTACK IS SILENCE. The calm pad swells over
+   * about 0.7 seconds and the singing bowl over a full second, so rendering them
+   * at 0.25s produces a buffer that costs time and memory to make and then makes
+   * no sound. Phonk voices attack in milliseconds and want every length.
+   */
+  lengthsFor(name) {
+    const attack = this.palette.pitched[name]?.attack ?? 0;
+    const usable = LENGTHS.map((_, i) => i).filter((i) => LENGTHS[i] > attack * 1.4);
+    // Never return nothing: the longest is always playable whatever the attack.
+    return usable.length ? usable : [LENGTHS.length - 1];
+  }
+
+  /**
+   * WHICH LENGTH SHE TOUCHES FIRST, and it is the longest.
+   *
+   * Every sustaining round starts its note through startHeld, which always takes
+   * the longest rendered buffer because at the moment she presses, nothing knows
+   * how long she will hold. So the longest is the one that has to exist before
+   * the gate opens; the rest can arrive while she is reading it.
+   */
+  priorityLengths() {
+    return [LENGTHS.length - 1];
+  }
+
+  /** Render one set of length indices for every pitched voice. */
+  _renderPass(lengthIdx) {
     for (let chord = 0; chord < PROGRESSION.length; chord++) {
       const shift = Math.pow(2, PROGRESSION[chord] / 12);
-      // EVERY PITCHED VOICE THE PALETTE DECLARES, rather than the two the phonk
-      // kit happened to have. The loop is the same; what it iterates is now data.
       for (const [name, spec] of Object.entries(this.palette.pitched)) {
-        for (const degree of DEGREES) {
-          for (let len = 0; len < LENGTHS.length; len++) {
-            const seconds = LENGTHS[len];
+        // A palette may render at a lower rate than the context runs at. Every
+        // calm voice tops out below 8.4 kHz, so 22050 is transparent for them
+        // and halves both the time and the memory — the same trade the baked
+        // drum kit already makes. Web Audio resamples on playback.
+        const sr = spec.sampleRate ?? this.ctx.sampleRate;
+        const wanted = this.lengthsFor(name);
+        for (const len of lengthIdx) {
+          if (!wanted.includes(len)) continue;
+          for (const degree of DEGREES) {
+            const key = `${name}:${degree}:${chord}:${len}`;
+            if (this.pitched.has(key)) continue;
             const hz = degreeToHz(degree, spec.octaves ?? 0) * shift;
             this.pitched.set(
-              `${name}:${degree}:${chord}:${len}`,
-              toBuffer(this.ctx, spec.render(sr, hz, this.shaping[name], { seconds }), sr)
+              key,
+              toBuffer(this.ctx, spec.render(sr, hz, this.shaping[name], { seconds: LENGTHS[len] }), sr)
             );
           }
         }
@@ -256,10 +286,60 @@ export class Voices {
     }
   }
 
+  /**
+   * Fill in every remaining length AFTER she can already play.
+   *
+   * One voice per turn of the event loop rather than one big block, so the page
+   * stays responsive while it happens. Time to first sound is what a player
+   * feels; total work is not, as long as none of it lands between her thumb and
+   * the sound (dec:built-for-tight-timing).
+   *
+   * If she manages to hold a note before its exact length exists, `play` falls
+   * back to the nearest one that does — a slightly wrong length is inaudible,
+   * and silence would not be.
+   */
+  _fillRemaining() {
+    const rest = LENGTHS.map((_, i) => i).filter((i) => !this.priorityLengths().includes(i));
+    if (!rest.length) return;
+    const queue = [...rest];
+    const step = () => {
+      const len = queue.shift();
+      if (len === undefined) { this.fullyRendered = true; return; }
+      this._renderPass([len]);
+      (globalThis.requestIdleCallback ?? ((f) => setTimeout(f, 0)))(step);
+    };
+    (globalThis.requestIdleCallback ?? ((f) => setTimeout(f, 0)))(step);
+  }
+
+  /**
+   * The buffer for a note, or the nearest length that has been rendered.
+   *
+   * Never returns undefined when the voice exists at all, which is what lets
+   * rendering be progressive without any chance of a silent key.
+   */
+  buffer(voice, degree, chord, len) {
+    const exact = this.pitched.get(`${voice}:${degree}:${chord}:${len}`);
+    if (exact) return exact;
+    for (let d = 1; d < LENGTHS.length; d++) {
+      for (const alt of [len - d, len + d]) {
+        if (alt < 0 || alt >= LENGTHS.length) continue;
+        const b = this.pitched.get(`${voice}:${degree}:${chord}:${alt}`);
+        if (b) return b;
+      }
+    }
+    return undefined;
+  }
+
   /** Set one instrument's shaping numbers and re-render it. */
   setShaping(instrument, values) {
     if (!this.shaping[instrument]) return;
     Object.assign(this.shaping[instrument], values);
+    // Drop this instrument's buffers so the new numbers are actually heard —
+    // _renderPass skips keys it already has, which is what makes the progressive
+    // fill cheap and would otherwise make a shaping change do nothing.
+    for (const key of [...this.pitched.keys()]) {
+      if (key.startsWith(`${instrument}:`)) this.pitched.delete(key);
+    }
     this.renderPitched();
   }
 
@@ -284,7 +364,7 @@ export class Voices {
     const len = nearestLength(seconds ?? LENGTHS[1]);
     const buf =
       this.drums.get(voice) ??
-      this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}:${len}`);
+      this.buffer(voice, ((degree % n) + n) % n, c, len);
     if (!buf) return;
 
     const src = this.ctx.createBufferSource();
@@ -314,7 +394,7 @@ export class Voices {
 Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
   const n = DEGREES.length;
   const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
-  const buf = this.pitched.get(`${voice}:${((degree % n) + n) % n}:${c}:${LENGTHS.length - 1}`);
+  const buf = this.buffer(voice, ((degree % n) + n) % n, c, LENGTHS.length - 1);
   if (!buf) return { release() {} };
 
   const src = this.ctx.createBufferSource();

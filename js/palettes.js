@@ -116,13 +116,26 @@ export const CALM = {
 
   // No baked kit: everything in this palette is pitched and rendered at load.
   kit: null,
+
+  /**
+   * `sampleRate` — RENDERED AT HALF RATE, DELIBERATELY. Measured: the highest
+   * frequency any of these voices can produce at its top note is the
+   * vibraphone's eighteenth partial at 8.4 kHz, and Nyquist at 22050 is 11 kHz.
+   * So 22050 is transparent here and halves both the render time and the
+   * memory. The same trade the drum kit already makes, for the same reason —
+   * Web Audio resamples on playback.
+   *
+   * `attack` — how long the voice takes to speak, so js/voices.js can skip
+   * rendering lengths shorter than it. A pad that swells over 0.7s rendered as
+   * a 0.25s note is a buffer that costs time to make and then makes no sound.
+   */
   pitched: {
-    handpan: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'handpan', s, o), octaves: 1 },
-    bowl: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'bowl', s, o), octaves: 0 },
-    vibes: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'vibes', s, o), octaves: 2 },
-    crotale: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'crotale', s, o), octaves: 3 },
-    pad: { render: (sr, hz, s, o) => renderPadVoice(sr, hz, s, o), octaves: 1 },
-    breath: { render: (sr, hz, s, o) => renderBreath(sr, hz, s, o), octaves: 2 },
+    handpan: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'handpan', s, o), octaves: 1, sampleRate: 22050, attack: 0.004 },
+    bowl: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'bowl', s, o), octaves: 0, sampleRate: 22050, attack: 1.0 },
+    vibes: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'vibes', s, o), octaves: 2, sampleRate: 22050, attack: 0.003 },
+    crotale: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'crotale', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
+    pad: { render: (sr, hz, s, o) => renderPadVoice(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 0.7 },
+    breath: { render: (sr, hz, s, o) => renderBreath(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.6 },
   },
   // The drone is the pad voice held long, on the root, voiced up so a phone can
   // reproduce it (dec:drone-voiced-up).
