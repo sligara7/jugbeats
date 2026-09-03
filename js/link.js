@@ -8,10 +8,10 @@
 // Governed by dec:track-in-the-url: the track travels inside the link, so there
 // is no server, no database and no account anywhere in this game.
 
-import { Track, LANE_STRIDE, STEPS_PER_BAR, GRID } from './track.js';
+import { Track, LANE_STRIDE, STEPS_PER_BAR, GRID, CHORD_BARS } from './track.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
-const VERSION = 6;
+const VERSION = 7;
 
 const CONTROLS = ['deeper', 'punchier', 'dirtier', 'longer'];
 const SHAPED = ['bass', 'lead'];
@@ -35,27 +35,30 @@ function fromB64Url(str) {
 }
 
 // ---------------------------------------------------------------------------
-// v6 — the track says which PALETTE it was made with
+// v7 — the chords she chose travel with the track
 //
-// New in v6 over v5: byte 3, which v5 reserved and always wrote as zero, now
-// carries the palette id (dec:styles-are-palettes). Nothing else moves.
+// New in v7 over v6: CHORD_BARS bytes on the end, one per bar of the four-bar
+// cycle, each an index into the palette's progression.
 //
-// WHY THIS NEEDED A VERSION BUMP EVEN THOUGH THE LAYOUT DID NOT CHANGE. Round
-// ids are POSITIONAL in this format: r1 is whatever the first round of the
-// current palette is. A calm track carries handpan and bowl in r1; decoded by a
-// build that only knows phonk, those notes come out as kick and snare. The bytes
-// parse perfectly and the music is wrong, which is the one failure this
-// published boundary exists to prevent.
+// WHY IT IS ON THE END AND NOT IN THE MIDDLE. Everything before it is
+// byte-identical to v6, so this decoder is v6's with four more reads — and if a
+// later version wants more, it appends again rather than moving anything.
 //
-// Because v5 always wrote zero there and phonk is palette 0, every v5 link ever
-// shared is a phonk link and still decodes as exactly what it always was.
+// AND WHY IT HAD TO TRAVEL AT ALL. The chords are part of the COMPOSITION, not
+// of the performance: she chose them deliberately and a note was played over
+// them. A bachata track that arrived without its harmony would be the same notes
+// over the wrong chords, which is precisely the silent-wrong-answer this format
+// keeps a version marker to prevent. Mutes, by contrast, stay out — those are a
+// performance choice (dec:arrangement-breathes), and that line is the whole
+// distinction the format encodes.
 // ---------------------------------------------------------------------------
 
-function encodeV6(track) {
+function encodeV7(track) {
   const maxSteps = track.maxLoopSteps;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
   const out = new Uint8Array(
-    4 + track.rounds.length * 2 + track.rounds.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
+    4 + track.rounds.length * 2 + track.rounds.length * bytesPerRound + 1
+    + SHAPED.length * CONTROLS.length + CHORD_BARS
   );
 
   let p = 0;
@@ -85,8 +88,47 @@ function encodeV6(track) {
       out[p++] = Math.round((v === undefined ? 0.5 : Math.min(1, Math.max(0, v))) * 255);
     }
   }
+
+  for (let i = 0; i < CHORD_BARS; i++) out[p++] = (track.chords[i] ?? 0) & 0xff;
   return out;
 }
+
+function decodeV7(bytes, palette) {
+  const track = decodeV6(bytes, palette);
+  if (!track) return null;
+  // The chords sit after everything v6 wrote, so their offset is the length of a
+  // v6 payload for this many rounds — computed rather than remembered.
+  const maxBars = bytes[1] || 4;
+  const bytesPerRound = Math.ceil((maxBars * STEPS_PER_BAR * LANE_STRIDE) / 8);
+  const p = 4 + track.rounds.length * 2 + track.rounds.length * bytesPerRound + 1
+    + SHAPED.length * CONTROLS.length;
+  for (let i = 0; i < CHORD_BARS; i++) {
+    const v = bytes[p + i];
+    if (v !== undefined) track.chords[i] = v;
+  }
+  return track;
+}
+
+// ---------------------------------------------------------------------------
+// v6 — the track says which PALETTE it was made with
+//
+// New in v6 over v5: byte 3, which v5 reserved and always wrote as zero, now
+// carries the palette id (dec:styles-are-palettes). Nothing else moves.
+//
+// WHY THIS NEEDED A VERSION BUMP EVEN THOUGH THE LAYOUT DID NOT CHANGE. Round
+// ids are POSITIONAL in this format: r1 is whatever the first round of the
+// current palette is. A calm track carries handpan and bowl in r1; decoded by a
+// build that only knows phonk, those notes come out as kick and snare. The bytes
+// parse perfectly and the music is wrong, which is the one failure this
+// published boundary exists to prevent.
+//
+// Because v5 always wrote zero there and phonk is palette 0, every v5 link ever
+// shared is a phonk link and still decodes as exactly what it always was.
+// ---------------------------------------------------------------------------
+
+// (no encodeV6 — only DECODERS are kept forever. Its encoder went the moment v7
+// replaced it, which is the rule every version here has followed, and doubly
+// right once VERSION moved on: a live v6 encoder would write a 7 in byte zero.)
 
 function decodeV6(bytes, palette) {
   let p = 1;
@@ -382,14 +424,14 @@ function decodeV1(bytes, palette) {
 }
 
 /** Every decoder we have ever shipped, keyed by version. Nothing leaves. */
-const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5, 6: decodeV6 };
+const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5, 6: decodeV6, 7: decodeV7 };
 
 // ---------------------------------------------------------------------------
 // The boundary
 // ---------------------------------------------------------------------------
 
 export function encode(track) {
-  return toB64Url(encodeV6(track));
+  return toB64Url(encodeV7(track));
 }
 
 /**
@@ -473,4 +515,4 @@ export async function share(track, { title = 'Listen to my beat', base } = {}) {
   }
 }
 
-export const _internal = { encodeV6, decodeV6, decodeV5, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
+export const _internal = { encodeV7, decodeV7, decodeV6, decodeV5, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };

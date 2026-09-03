@@ -151,7 +151,9 @@ console.log('\nthe harmony does not move under her');
   // over home came back at a DIFFERENT PITCH on later bars — what she played
   // was not what she heard. Whatever a manual version does later, a note she
   // has already recorded must never be moved underneath her.
-  const { chordAt } = await import('../js/track.js');
+  const { Track } = await import('../js/track.js');
+  const t0 = new Track({ bars: 4 });
+  const chordAt = (b) => t0.chordAt(b);
   const bars = [0, 16, 32, 48, 64, 160, 1024];
   check('every bar is the same chord', bars.every((b) => chordAt(b) === 0),
     bars.map((b) => chordAt(b)).join(','));

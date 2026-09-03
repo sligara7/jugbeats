@@ -11,6 +11,7 @@
 import { writeFileSync } from 'node:fs';
 import { encodeWav } from './wav.mjs';
 import { MINOR_PENTATONIC as SCALE, ROOT_HZ } from '../js/dsp.js';
+import { BACHATA as PALETTE } from '../js/palettes.js';
 import { reverb } from '../js/ethereal.js';
 import { renderString, renderBongo, renderGuira, BACHATA } from '../js/bachata.js';
 
@@ -55,6 +56,17 @@ function hz(degree, oct = 0) {
 // sustaining at once until nothing is audible. Long notes need room.
 // ---------------------------------------------------------------------------
 
+// THE HARMONY MOVES, and only the bass says so.
+//
+// i - ♭VI - ♭VII - i, which is what an enormous amount of bachata is built on.
+// The bass transposes with it and states the change; the requinto stays in one
+// pentatonic and floats over the top, the way a blues player uses one scale over
+// a whole tune. Transposing the lead too would give each chord its own parallel
+// pentatonic and wander outside the key.
+const CHORDS = [0, 1, 2, 0];
+const chordAt = (bar) => PALETTE.progression[CHORDS[bar % CHORDS.length]];
+const shiftAt = (bar) => Math.pow(2, chordAt(bar) / 12);
+
 // THE GÜIRA IS THE ENGINE. It runs all the way through on the eighths, with a
 // long drag on the back half of every beat — that alternation of flick and drag
 // is the sound that keeps bachata moving, and without it the guitars just hang.
@@ -79,18 +91,22 @@ const BASS = [
   [2, 0, 3], [2, 8, 0], [2, 14, 3],
   [3, 0, 0], [3, 8, 3], [3, 14, 4],
 ];
-for (const [bar, step, degree] of BASS) {
-  place(renderString(SR, hz(degree, 0), 'bajo', NEUTRAL, { seconds: 1.4 }), timeOf(bar % 4 + (bar >= 4 ? 4 : 0), step), 0.5);
-}
-for (const [bar, step, degree] of BASS) {
-  place(renderString(SR, hz(degree, 0), 'bajo', NEUTRAL, { seconds: 1.4 }), timeOf(bar + 4, step), 0.5);
+for (const pass of [0, 4]) {
+  for (const [bar, step, degree] of BASS) {
+    const b = bar + pass;
+    place(renderString(SR, hz(degree, 0) * shiftAt(b), 'bajo', NEUTRAL, { seconds: 1.4 }),
+      timeOf(b, step), 0.5);
+  }
 }
 
 // The segunda: a short answering figure, plucked and immediately damped, which
 // is what a rhythm guitar in this music actually does.
 for (let bar = 0; bar < BARS; bar++) {
   for (const [s, d] of [[4, 0], [6, 3], [12, 0], [14, 3]]) {
-    place(renderString(SR, hz(d, 2), 'segunda', NEUTRAL, { seconds: 0.7 }), timeOf(bar, s), 0.3);
+    // The rhythm guitar follows the bass, because a chord needs more than one
+    // voice to read as a chord.
+    place(renderString(SR, hz(d, 2) * shiftAt(bar), 'segunda', NEUTRAL, { seconds: 0.7 }),
+      timeOf(bar, s), 0.3);
   }
 }
 
@@ -123,4 +139,4 @@ for (let i = 0; i < L.length; i++) { out[i * 2] = L[i] * g; out[i * 2 + 1] = R[i
 
 const path = process.argv[2] || 'bachata.wav';
 writeFileSync(path, Buffer.from(encodeWav(out, SR, 2)));
-console.log(`wrote ${path} — ${(L.length / SR).toFixed(1)}s, ${BPM}bpm, straight, ${BARS} bars + tail`);
+console.log(`wrote ${path} — ${(L.length / SR).toFixed(1)}s, ${BPM}bpm, straight, i-♭VI-♭VII-i, ${BARS} bars + tail`);

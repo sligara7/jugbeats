@@ -140,7 +140,7 @@ two arrive in which round, the tempo, the swing, the room, and the scale.
 | `/ethereal/` | handpan, bowls, pad and voice in a big warm room |
 | `/haunted/` | music box, cracked bell, glass harmonica — **whole tone** |
 | `/reggaeton/` | the dembow, and the first round **snaps to it** |
-| `/bachata/` | requinto, segunda, bajo, güira and bongó — **plucked strings** |
+| `/bachata/` | requinto, segunda, bajo, güira and bongó — **plucked strings**, and the only one whose **harmony moves** |
 
 The root used to be the phonk game, and moving it broke nothing: `index.html`
 reads the palette id straight out of the hash before it renders and forwards to
@@ -158,6 +158,23 @@ dembow itself — a tresillo at steps 0, 3, 6, 8, 11, 14 — so a tap anywhere n
 it lands on it. Steps 3 and 11 are not on the eighth grid at all, which is why
 the pattern was unreachable until a grid could be a list of positions rather
 than a spacing.
+
+**And the harmony can move, on the one palette that needs it.** Bachata offers
+four chords — i, ♭VI, ♭VII, iv — stepped with a single chip, one chord per bar
+over a four-bar cycle, and they travel in the link because they are part of the
+composition rather than of the performance.
+
+One rule governs all of it: **a note she recorded must never be transposed under
+her afterwards.** An automatic progression once did exactly that and was taken
+back out — what she played was not what she heard. Deliberate is the whole
+difference. And the pentatonic is consonant against every one of the four, which
+is why the scale lock stays true once the harmony starts moving: over ♭VI her
+notes are the third, fifth, sixth, seventh and ninth. Every one an extension.
+
+**The bass moves and the melody does not**, which is how a band actually plays
+this — the bass states the chord, the lead floats over it in one scale, the way a
+blues player uses one pentatonic over a whole tune. It is also why chords are
+cheap: only a transposing voice needs a buffer per chord.
 
 **The scale lock has two halves, and only one is universal.** No palette may put
 a semitone within reach: that is the grinding a child hears as a mistake, and it

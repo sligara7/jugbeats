@@ -10,7 +10,7 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, GRID, FINE_GRID, quantise, chordAt, isLocked } from './track.js';
+import { Track, GRID, FINE_GRID, quantise, isLocked } from './track.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
@@ -142,7 +142,7 @@ function onHit(lane) {
   //    It rings until she lets go, which is what the long block on screen has
   //    been promising and not delivering.
   const now = clock.now();
-  const chord = chordAt(now ?? 0);
+  const chord = track.chordAt(now ?? 0);
   if (round.sustains) {
     held.get(lane)?.release();
     held.set(lane, voices.startHeld(voice, { degree, chord }));
@@ -247,7 +247,7 @@ clock.onSchedule((from, to, timeOf) => {
         // its own length; a pitched note takes the nearest rendered one.
         const steps = track.runLengthAt(round.id, lane, slot);
         voices.play(voice, {
-          degree, time: timeOf(step), gain, chord: chordAt(step),
+          degree, time: timeOf(step), gain, chord: track.chordAt(step),
           seconds: steps * clock.stepSeconds,
         });
       }
@@ -375,6 +375,25 @@ function refresh() {
   // grown-up who opens her beat on a laptop has it immediately.
   el('midi').hidden = !track.rounds.every((r) => track.accepted.has(r.id));
 
+  // THE CHORD, on palettes that have more than one.
+  //
+  // It shows the bar she is IN, because that is the bar it changes — she taps,
+  // the loop comes round, and she hears it. That is the audition, and it is why
+  // this needs no preview of its own: the pause she asked for is `listen`, and
+  // this works the same whether she is listening or recording.
+  const chordBtn = el('chord');
+  const prog = palette.progression ?? [0];
+  if (prog.length < 2) {
+    chordBtn.hidden = true;
+  } else {
+    const at = clock.now();
+    chordBtn.hidden = at === null;
+    if (at !== null) {
+      const names = palette.chordNames ?? prog.map((_, i) => `${i + 1}`);
+      chordBtn.textContent = `chord ${names[track.chordAt(at)]}`;
+    }
+  }
+
   const undo = resetAction();
   el('reset').hidden = undo === null;
   if (undo) {
@@ -436,6 +455,25 @@ el('transport').addEventListener('click', (e) => {
 
 el('reset').addEventListener('click', (e) => {
   e.stopPropagation();
+  // THE CHORD, on palettes that have more than one.
+  //
+  // It shows the bar she is IN, because that is the bar it changes — she taps,
+  // the loop comes round, and she hears it. That is the audition, and it is why
+  // this needs no preview of its own: the pause she asked for is `listen`, and
+  // this works the same whether she is listening or recording.
+  const chordBtn = el('chord');
+  const prog = palette.progression ?? [0];
+  if (prog.length < 2) {
+    chordBtn.hidden = true;
+  } else {
+    const at = clock.now();
+    chordBtn.hidden = at === null;
+    if (at !== null) {
+      const names = palette.chordNames ?? prog.map((_, i) => `${i + 1}`);
+      chordBtn.textContent = `chord ${names[track.chordAt(at)]}`;
+    }
+  }
+
   const undo = resetAction();
   if (!undo) return;
 
@@ -559,6 +597,18 @@ el('playpause').addEventListener('click', (e) => {
     resumeAll();
     flash('off we go');
   }
+});
+
+el('chord').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const at = clock.now();
+  if (at === null) return;
+  const prog = palette.progression ?? [0];
+  if (prog.length < 2) return;
+  const next = track.cycleChord(at);
+  const names = palette.chordNames ?? prog.map((_, i) => `${i + 1}`);
+  flash(`bar ${track.chordBarAt(at) + 1} is ${names[next]} now — it comes round in a moment`);
+  refresh();
 });
 
 el('grid').addEventListener('click', (e) => {

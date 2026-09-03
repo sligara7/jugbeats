@@ -372,6 +372,23 @@ export const BACHATA = {
   scaleName: 'minor pentatonic',
 
   /**
+   * THE CHORDS SHE CAN STEP THROUGH, as semitone offsets from home.
+   *
+   * i, ♭VI, ♭VII, iv — in C minor that is Cm, A♭, B♭, Fm, which is the
+   * progression an enormous amount of bachata is actually built on.
+   *
+   * AND THE PENTATONIC IS CONSONANT AGAINST EVERY ONE OF THEM, which is the
+   * finding that survived the automatic version being taken back out
+   * (dec:idea-drop-the-auto-progression) and is what makes the scale lock still
+   * true once the harmony moves. Over A♭ her notes are the third, fifth, sixth,
+   * seventh and ninth; over B♭ the ninth, eleventh, fifth, thirteenth and root;
+   * over Fm the fifth, ♭seventh, root, ninth and eleventh. Every one an
+   * extension, not a clash.
+   */
+  progression: [0, 8, 10, 5],
+  chordNames: ['i', '♭VI', '♭VII', 'iv'],
+
+  /**
    * NOTHING SUSTAINS HERE, and that is not an oversight. Every voice in this
    * palette is struck or plucked: a string rings for as long as it rings and
    * holding the key cannot make it longer, which is exactly the reasoning
@@ -421,7 +438,16 @@ export const BACHATA = {
     bongo: { render: (sr, hz, s, o) => renderBongo(sr, s, o), octaves: 0, sampleRate: 22050, attack: 0.002 },
     guira: { render: (sr, hz, s, o) => renderGuira(sr, s, o), octaves: 0, sampleRate: 22050, attack: 0.001 },
     segunda: { render: (sr, hz, s, o) => renderString(sr, hz, 'segunda', s, o), octaves: 2, sampleRate: 22050, attack: 0.002 },
-    bajo: { render: (sr, hz, s, o) => renderString(sr, hz, 'bajo', s, o), octaves: 0, sampleRate: 22050, attack: 0.002 },
+    // THE BASS MOVES AND NOTHING ELSE DOES, which is how a band actually plays
+    // this. The bass states the chord — that is what makes a change audible at
+    // all — while the melody stays in one scale and floats over it, the way a
+    // blues player uses one pentatonic over a whole tune. Transposing the
+    // requinto too would give each chord its own parallel pentatonic, which
+    // wanders outside the key.
+    //
+    // It is also why chords stay cheap: only a transposing voice needs a buffer
+    // per chord, so four chords cost four bass renders and nothing else.
+    bajo: { render: (sr, hz, s, o) => renderString(sr, hz, 'bajo', s, o), octaves: 0, sampleRate: 22050, attack: 0.002, transposes: true },
     requinto: { render: (sr, hz, s, o) => renderString(sr, hz, 'requinto', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
   },
   // A held segunda chord, quietly, so round one is not played into silence.

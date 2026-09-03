@@ -91,6 +91,12 @@ html, body {
   border-color: rgba(255, 255, 255, 0.3);
   background: transparent;
 }
+/* The chord is the one chip that changes the MUSIC rather than the grid, so it
+   carries the accent — and it is the only thing on this screen she can press
+   that alters what the notes she already played will sound like. */
+.chord { border-color: var(--hot); color: var(--hot); }
+.chord:active { background: var(--hot); border-color: var(--hot); color: #14060d; }
+
 .length[data-locked="true"]:active { background: transparent; border-color: rgba(255, 255, 255, 0.3); color: rgba(244, 238, 252, 0.8); }
 
 /* --- the transport, down the empty middle -------------------------------- */

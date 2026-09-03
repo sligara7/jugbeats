@@ -15,7 +15,7 @@
 //
 // This part never reads her track and never reads the screen.
 
-import { renderClick, degreeToHz, PROGRESSION, NEUTRAL } from './dsp.js';
+import { renderClick, degreeToHz, NEUTRAL } from './dsp.js';
 import { PHONK } from './palettes.js';
 
 /**
@@ -267,9 +267,15 @@ export class Voices {
 
   /** Render one set of length indices for every pitched voice. */
   _renderPass(lengthIdx) {
-    for (let chord = 0; chord < PROGRESSION.length; chord++) {
-      const shift = Math.pow(2, PROGRESSION[chord] / 12);
+    const progression = this.palette.progression ?? [0];
+    for (let chord = 0; chord < progression.length; chord++) {
+      const shift = Math.pow(2, progression[chord] / 12);
       for (const [name, spec] of Object.entries(this.palette.pitched)) {
+        // ONLY A VOICE THAT FOLLOWS THE CHANGES NEEDS A BUFFER PER CHORD. The
+        // rest are rendered once at chord 0 and played at chord 0 whatever the
+        // harmony is doing, which is both the musical intent and the reason a
+        // four-chord palette does not cost four times the load.
+        if (chord > 0 && !spec.transposes) continue;
         // A palette may render at a lower rate than the context runs at. Every
         // calm voice tops out below 8.4 kHz, so 22050 is transparent for them
         // and halves both the time and the memory — the same trade the baked
@@ -350,6 +356,21 @@ export class Voices {
   }
 
   /**
+   * Which rendered chord this voice should sound at.
+   *
+   * A voice that does not follow the changes has only ever been rendered at
+   * chord 0, so asking it for chord 2 would find nothing and fall back to a
+   * length that also does not exist. Answering 0 here is what keeps the melody
+   * floating over the harmony instead of going silent under it.
+   */
+  _chordFor(voice, chord) {
+    const spec = this.palette.pitched[voice];
+    if (!spec?.transposes) return 0;
+    const n = (this.palette.progression ?? [0]).length;
+    return ((chord % n) + n) % n;
+  }
+
+  /**
    * Play one voice, at one pitch, at one audio time.
    *
    * A voice that is not loaded is silent rather than throwing (iface:play-a-voice).
@@ -366,7 +387,7 @@ export class Voices {
   play(voice, { degree = 0, time, gain = 1, chord = 0, seconds } = {}) {
     const at = time ?? this.ctx.currentTime;
     const n = degrees(this.palette).length;
-    const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
+    const c = this._chordFor(voice, chord);
     const len = nearestLength(seconds ?? LENGTHS[1]);
     const buf =
       this.drums.get(voice) ??
@@ -399,7 +420,7 @@ export class Voices {
  */
 Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
   const n = degrees(this.palette).length;
-  const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
+  const c = this._chordFor(voice, chord);
   const buf = this.buffer(voice, ((degree % n) + n) % n, c, LENGTHS.length - 1);
   if (!buf) return { release() {} };
 

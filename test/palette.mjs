@@ -11,7 +11,7 @@
 // perfectly, nothing errors, and the music is wrong — which is exactly the class
 // of silent-wrong-answer the version marker exists to stop.
 
-import { Track, DEFAULT_ROUNDS, checkPalette } from '../js/track.js';
+import { Track, DEFAULT_ROUNDS, checkPalette, STEPS_PER_BAR } from '../js/track.js';
 
 globalThis.btoa ??= (s) => Buffer.from(s, 'binary').toString('base64');
 globalThis.atob ??= (s) => Buffer.from(s, 'base64').toString('binary');
@@ -56,8 +56,8 @@ console.log('\nthe palette travels in the link');
   t.accept('r1');
   const link = encode(t);
 
-  check('the version byte says v6', _internal.decodeV6 && [...Buffer.from(
-    link.replace(/-/g, '+').replace(/_/g, '/') + '==', 'base64')][0] === 6);
+  check('the version byte says v7', [...Buffer.from(
+    link.replace(/-/g, '+').replace(/_/g, '/') + '==', 'base64')][0] === 7);
   check('the palette can be read without decoding', paletteIdOf(link) === CALM.id,
     `got ${paletteIdOf(link)}`);
 
@@ -92,8 +92,7 @@ console.log('\nold links are phonk links, forever');
     t.accept('r1');
     // Build a v5 payload by hand: same bytes as v6 with version 5 and a zero
     // reserved byte. This is what a real shipped link looks like.
-    const v6bytes = _internal.encodeV6(t);
-    const b = Uint8Array.from(v6bytes);
+    const b = Uint8Array.from(_internal.encodeV7(t));
     b[0] = 5;
     b[3] = 0;
     return _internal.toB64Url(b);
@@ -213,6 +212,68 @@ console.log('\nthe rhythm lock');
   // A tap anywhere near the beat is recorded ON the beat.
   const slot = t.record('r1', 0, 2.4);
   check('a sloppy tap is recorded on the pattern', onGrid(slot, dembow), `landed on ${slot}`);
+}
+
+console.log('\nchords she chose herself');
+
+{
+  const { BACHATA } = await import('../js/palettes.js');
+  const { CHORD_BARS } = await import('../js/track.js');
+
+  check('bachata offers four chords', BACHATA.progression.length === 4,
+    BACHATA.progression.join(','));
+  check('and the first is home', BACHATA.progression[0] === 0);
+  check('every other palette stays on one chord',
+    PALETTES.filter((p) => p.key !== 'bachata')
+      .every((p) => (p.progression ?? [0]).length === 1));
+
+  // THE PROMISE THE AUTOMATIC VERSION BROKE. Every note she can reach must stay
+  // consonant over every chord she can choose, or the scale lock is only true
+  // at home (dec:idea-drop-the-auto-progression).
+  const GRIND = [1, 11];
+  for (let c = 0; c < BACHATA.progression.length; c++) {
+    const shifted = BACHATA.scale.map((d) => (((d - BACHATA.progression[c]) % 12) + 12) % 12);
+    const found = new Set();
+    for (let i = 0; i < shifted.length; i++)
+      for (let j = 0; j < shifted.length; j++)
+        if (i !== j) found.add((((shifted[i] - shifted[j]) % 12) + 12) % 12);
+    const grind = GRIND.filter((h) => found.has(h));
+    check(`over chord ${BACHATA.chordNames[c]}: nothing grinds`, grind.length === 0,
+      grind.length ? `found ${grind.join(',')}` : 'every note is an extension');
+  }
+
+  const t = new Track({ bars: 4, palette: BACHATA });
+  check('a fresh track sits at home', t.chords.every((c) => c === 0), t.chords.join(','));
+
+  // She sets the bar she is IN. That is the audition: change it, hear it come round.
+  t.cycleChord(0);                      // bar 0
+  t.cycleChord(STEPS_PER_BAR * 2);      // bar 2
+  t.cycleChord(STEPS_PER_BAR * 2);      // twice
+  check('a chord is set on the bar the playhead is in', t.chords.join(',') === '1,0,2,0',
+    t.chords.join(','));
+  check('and reading it back agrees', t.chordAt(0) === 1 && t.chordAt(STEPS_PER_BAR * 2) === 2);
+  check('the cycle repeats every four bars',
+    t.chordAt(0) === t.chordAt(STEPS_PER_BAR * CHORD_BARS));
+  check('and negative positions do not wander', t.chordAt(-STEPS_PER_BAR * CHORD_BARS) === 1);
+
+  // A one-chord palette cannot be talked into having harmony.
+  const p2 = new Track({ bars: 4, palette: PHONK });
+  p2.cycleChord(0);
+  check('a palette with one chord ignores the control', p2.chords.every((c) => c === 0));
+
+  // AND IT TRAVELS, because the chords are composition and not performance.
+  t.record('r4', 0, 0);
+  t.accept('r4');
+  const back = decode(encode(t), BACHATA);
+  check('the chords survive being sent', back.chords.join(',') === t.chords.join(','),
+    back.chords.join(','));
+  check('the notes survive with them', back.count('r4') === t.count('r4'));
+
+  // THE RULE: nothing she recorded moves unless she moves it.
+  const before = t.chordAt(STEPS_PER_BAR * 2);
+  t.record('r3', 0, STEPS_PER_BAR * 2);
+  check('recording a note does not disturb the chord under it',
+    t.chordAt(STEPS_PER_BAR * 2) === before);
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);

@@ -15,20 +15,17 @@ export const STEPS_PER_BAR = 16;
 
 export { PROGRESSION };
 
+
 /**
- * Which chord is sounding at an absolute step.
+ * HOW MANY BARS THE PROGRESSION CYCLES OVER.
  *
- * Keyed to ABSOLUTE time rather than to any round's loop, because the
- * progression belongs to the piece rather than to a layer. That has a lovely
- * consequence once rounds are different lengths: a three-bar bass under a
- * four-bar progression plays the same recorded note over a different chord each
- * time round, so one phrase keeps meaning something new. The pentatonic is what
- * makes that safe rather than lucky.
+ * Four, because four is what a progression almost always is and because a chord
+ * per bar over four bars is small enough to carry in a link without thinking
+ * about it. Rounds may be any length and drift against each other; the chords do
+ * not, so the harmony stays somewhere she can hold in her head while the rhythm
+ * does whatever it likes.
  */
-export function chordAt(absStep) {
-  const bar = Math.floor(absStep / STEPS_PER_BAR);
-  return ((bar % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
-}
+export const CHORD_BARS = 4;
 
 /**
  * The most lanes any round has. Used as a fixed STRIDE when packing notes, so
@@ -295,6 +292,20 @@ export class Track {
     /** The tempo she tapped. Part of the track: it is hers, not the game's. */
     this.bpm = 100;
 
+    /**
+     * ONE CHORD PER BAR, over a four-bar cycle. Indices into the palette's
+     * progression, and part of the composition rather than of the performance —
+     * they travel in the link.
+     *
+     * THE RULE THIS EXISTS TO KEEP: a note she recorded must never be transposed
+     * under her AFTERWARDS. An automatic progression once did exactly that and
+     * was taken back out, because what she played was not what she heard
+     * (dec:idea-drop-the-auto-progression). Deliberate is the whole difference —
+     * she sets a bar's chord and hears it come round, which is editing her own
+     * music, not the game moving it while she is not looking.
+     */
+    this.chords = new Array(CHORD_BARS).fill(0);
+
   }
 
   /** The rounds this track is played in — the palette's, not a global's. */
@@ -305,6 +316,39 @@ export class Track {
 
   /** Which style it was made with. Travels in the link from v6 on. */
   get paletteId() { return this.palette.id ?? 0; }
+
+  /** The palette's chords, as semitone offsets. One entry means it never moves. */
+  get progression() { return this.palette.progression ?? PROGRESSION; }
+
+  /** Which chord is sounding at an absolute step. */
+  chordAt(absStep) {
+    const bar = Math.floor(absStep / STEPS_PER_BAR);
+    const i = ((bar % CHORD_BARS) + CHORD_BARS) % CHORD_BARS;
+    const c = this.chords[i] ?? 0;
+    const n = this.progression.length;
+    return ((c % n) + n) % n;
+  }
+
+  /** Which bar of the cycle an absolute step is in. */
+  chordBarAt(absStep) {
+    const bar = Math.floor(absStep / STEPS_PER_BAR);
+    return ((bar % CHORD_BARS) + CHORD_BARS) % CHORD_BARS;
+  }
+
+  /**
+   * Step the chord under the playhead to the next one the palette offers.
+   *
+   * Deliberately the bar she is IN rather than the bar she is heading for: she
+   * changes it, the loop comes round, and she hears it. That is the audition,
+   * and it is why this needs no preview of its own.
+   */
+  cycleChord(absStep, by = 1) {
+    const n = this.progression.length;
+    if (n < 2) return 0;
+    const i = this.chordBarAt(absStep);
+    this.chords[i] = (((this.chords[i] ?? 0) + by) % n + n) % n;
+    return this.chords[i];
+  }
 
   /** One round by id. */
   roundById(roundId) { return this.rounds.find((r) => r.id === roundId); }
