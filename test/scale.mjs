@@ -9,7 +9,7 @@
 // chords. This test is the promise, written down.
 
 import { SCALE_STEPS, NATURAL_MINOR_STEPS, SCALE_NAME, degreeToHz, ROOT_HZ } from '../js/dsp.js';
-import { ROUNDS } from '../js/track.js';
+import { DEFAULT_ROUNDS } from '../js/track.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -72,7 +72,7 @@ console.log('\nevery pair of lanes she can press together is consonant');
 {
   // The real test: not the abstract scale, but the notes actually under her
   // thumbs. A safe scale wired to unsafe lanes would still sound wrong.
-  for (const round of ROUNDS) {
+  for (const round of DEFAULT_ROUNDS) {
     const degrees = round.lanes.map((l) => l.degree).filter((d) => d !== undefined);
     if (degrees.length < 2) continue;
 

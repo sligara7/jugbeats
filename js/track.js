@@ -9,7 +9,7 @@
 // and by dec:one-clock, since recording happens after the
 // sound has already played, never between her thumb and her ear.
 
-import { PROGRESSION } from './dsp.js';
+import { PROGRESSION, MINOR_PENTATONIC as DEFAULT_SCALE } from './dsp.js';
 
 export const STEPS_PER_BAR = 16;
 
@@ -40,8 +40,6 @@ export function chordAt(absStep) {
  */
 export const LANE_STRIDE = 4;
 
-/** How many keys this round puts under her thumbs. */
-export const laneCount = (roundId) => roundById(roundId)?.lanes.length ?? 0;
 
 /**
  * The grid she can land on, in sixteenths. 2 = eighth notes.
@@ -114,28 +112,18 @@ export const isLocked = (grid) => Array.isArray(grid);
 /**
  * The rounds, in the order she plays them (dec:two-thumbs-loop-pedal).
  *
- * NOW OWNED BY THE PALETTE (dec:styles-are-palettes). The list used to live here
- * as a constant, which was correct while there was one style and wrong the
- * moment there were several: what changes between phonk and the calm palette is
- * exactly this table plus the voices behind it.
- *
- * `let` rather than `const` ON PURPOSE. ES modules give importers a LIVE binding,
- * so every `import { ROUNDS }` in the project sees the swap without any of them
- * having to learn that palettes exist. The alternative — passing the round list
- * through session, track, stage, link and midi — would have touched every file
- * to express one fact.
+ * OWNED BY THE PALETTE AND INJECTED INTO THE TRACK. They lived here as a module
+ * global for one session — `export let ROUNDS` with a setter — which worked
+ * because ES module live bindings meant no importer had to change. That apparent
+ * cheapness was the whole problem: every consumer silently depended on state
+ * somebody else had set, which is exactly what injection exists to prevent.
  *
  * Two sounds per round, one per thumb. `sustains` is whether holding a key means
  * anything: you do not hold a drum, but you do hold a singing bowl, which is why
- * this belongs to the instrument rather than to the round position. `click`
- * marks the round the metronome is needed for; it retires after round one,
- * because from then on her own beat is the click.
- */
-/**
- * The phonk rounds — the default, and the ones her game has always had.
- *
- * EXPORTED so js/palettes.js can point PHONK at these rather than restating
- * them. There is exactly one copy of this list and it is here.
+ * it belongs to the instrument rather than to the round position. `click` marks
+ * the round the metronome is needed for; it retires after round one, because
+ * from then on her own beat is the click. `grid` is optional and may be a
+ * spacing or a rhythm lock.
  */
 export const DEFAULT_ROUNDS = [
   {
@@ -182,32 +170,35 @@ export const DEFAULT_ROUNDS = [
   },
 ];
 
-export let ROUNDS = DEFAULT_ROUNDS;
-
 /**
- * Point the engine at a palette's rounds.
+ * The shape a palette has to have for a Track to use it — the protocol, stated
+ * where it is consumed rather than where it is declared.
  *
- * Call ONCE, before anything reads a track. Swapping palettes mid-session would
- * leave recorded notes indexed against lanes that no longer mean the same thing.
+ * Checked rather than trusted, because JavaScript has no way to declare it and
+ * a palette with a missing field would otherwise fail somewhere far away and
+ * much later.
  */
-export function setRounds(rounds) {
-  if (!Array.isArray(rounds) || rounds.length !== DEFAULT_ROUNDS.length) {
+export function checkPalette(palette) {
+  if (!palette || !Array.isArray(palette.rounds)) {
+    throw new TypeError('a palette must have a rounds array');
+  }
+  if (palette.rounds.length !== DEFAULT_ROUNDS.length) {
     throw new Error(`a palette must define exactly ${DEFAULT_ROUNDS.length} rounds`);
+  }
+  if (!Array.isArray(palette.scale) || palette.scale.length < 2) {
+    throw new TypeError('a palette must have a scale of at least two degrees');
   }
   // A LOCKED ROUND MAY NOT SUSTAIN, and this is a guard rather than a taste.
   // Held notes are walked in even steps — start, previous, how many fit — and a
   // rhythm lock has uneven gaps by definition, so the two models do not compose.
-  // Refusing here is far better than discovering it as a held note of the wrong
-  // length somewhere downstream.
-  const bad = rounds.find((r) => Array.isArray(r.grid) && r.sustains);
+  const bad = palette.rounds.find((r) => Array.isArray(r.grid) && r.sustains);
   if (bad) {
     throw new Error(`round "${bad.id}" cannot both hold notes and lock its rhythm`);
   }
-  ROUNDS = rounds;
-  return ROUNDS;
+  return palette;
 }
 
-export const roundById = (id) => ROUNDS.find((r) => r.id === id);
+
 
 export class Track {
   /**
@@ -225,7 +216,16 @@ export class Track {
    * as often — which is exactly what made it feel repetitive. A design that
    * never revisits a constraint once its reason has gone just accumulates them.
    */
-  constructor({ bars = 4 } = {}) {
+  constructor({ bars = 4, palette } = {}) {
+    /**
+     * WHICH STYLE THIS TRACK IS, injected rather than reached for.
+     *
+     * The track is where a palette actually bites — its rounds are the lanes,
+     * its scale is the pitches, its grids are where a note may land — and every
+     * other part of the game already receives a track. So handing the palette to
+     * the track hands it to session, link and midi for nothing.
+     */
+    this.palette = checkPalette(palette ?? { rounds: DEFAULT_ROUNDS, scale: DEFAULT_SCALE, id: 0 });
     this.bars = bars;
 
     /**
@@ -243,7 +243,7 @@ export class Track {
      * listener hears as a pattern. Seven against eight take fifty-six, which a
      * listener hears as drift.
      */
-    this.roundBars = Object.fromEntries(ROUNDS.map((r) => [r.id, bars]));
+    this.roundBars = Object.fromEntries(this.rounds.map((r) => [r.id, bars]));
 
     /**
      * How fine a grid each round may land on (dec:idea-finer-notes-per-round).
@@ -269,10 +269,10 @@ export class Track {
     // FROM THE PALETTE'S OWN ROUNDS. A round may declare a rhythm lock — a list of
     // positions rather than a spacing — and ROUNDS is already whichever palette
     // this is, so the default arrives without Track having to know about palettes.
-    this.roundGrid = Object.fromEntries(ROUNDS.map((r) => [r.id, r.grid ?? GRID]));
+    this.roundGrid = Object.fromEntries(this.rounds.map((r) => [r.id, r.grid ?? GRID]));
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
-    this.events = Object.fromEntries(ROUNDS.map((r) => [r.id, new Set()]));
+    this.events = Object.fromEntries(this.rounds.map((r) => [r.id, new Set()]));
     /** Which rounds she has accepted with STOP. Only these play back. */
     this.accepted = new Set();
 
@@ -295,15 +295,22 @@ export class Track {
     /** The tempo she tapped. Part of the track: it is hers, not the game's. */
     this.bpm = 100;
 
-    /**
-     * Which palette this track was made with (dec:styles-are-palettes).
-     *
-     * Part of the track rather than of the page, because round ids are
-     * POSITIONAL in the link: the same bytes read under a different palette put
-     * her handpan where a kick should be. Travels in the link from v6 on.
-     */
-    this.paletteId = 0;
   }
+
+  /** The rounds this track is played in — the palette's, not a global's. */
+  get rounds() { return this.palette.rounds; }
+
+  /** The scale its pitched lanes are locked to. */
+  get scale() { return this.palette.scale; }
+
+  /** Which style it was made with. Travels in the link from v6 on. */
+  get paletteId() { return this.palette.id ?? 0; }
+
+  /** One round by id. */
+  roundById(roundId) { return this.rounds.find((r) => r.id === roundId); }
+
+  /** How many keys this round puts under her thumbs. */
+  laneCount(roundId) { return this.roundById(roundId)?.lanes.length ?? 0; }
 
   /** The grid this round lands on, in sixteenths. 2 = eighths, 1 = sixteenths. */
   gridFor(roundId) {
@@ -352,7 +359,7 @@ export class Track {
 
   /** The longest round. Used for sizing, never for wrapping. */
   get maxLoopSteps() {
-    return Math.max(...ROUNDS.map((r) => this.loopStepsFor(r.id)));
+    return Math.max(...this.rounds.map((r) => this.loopStepsFor(r.id)));
   }
 
   /**
@@ -362,7 +369,7 @@ export class Track {
    * pattern or as the game being broken.
    */
   get compositeBars() {
-    return ROUNDS.map((r) => this.barsFor(r.id)).reduce(lcm, 1);
+    return this.rounds.map((r) => this.barsFor(r.id)).reduce(lcm, 1);
   }
 
   /** Kept for callers that only ever wanted somewhere to wrap; prefer
@@ -395,7 +402,7 @@ export class Track {
     const out = [];
     const set = this.events[roundId];
     if (!set) return out;
-    for (let lane = 0; lane < laneCount(roundId); lane++) if (set.has(slot * LANE_STRIDE + lane)) out.push(lane);
+    for (let lane = 0; lane < this.laneCount(roundId); lane++) if (set.has(slot * LANE_STRIDE + lane)) out.push(lane);
     return out;
   }
 
@@ -432,12 +439,12 @@ export class Track {
     if (!set) return out;
 
     const grid = this.gridFor(roundId);
-    if (!roundById(roundId)?.sustains) {
+    if (!this.roundById(roundId)?.sustains) {
       for (const { slot, lane } of this.notes(roundId)) out.push({ lane, start: slot, length: blockSteps(grid) });
       return out;
     }
 
-    for (let lane = 0; lane < laneCount(roundId); lane++) {
+    for (let lane = 0; lane < this.laneCount(roundId); lane++) {
       let start = null;
       let last = null;
       for (let slot = 0; slot < this.loopStepsFor(roundId); slot += grid) {
@@ -463,7 +470,7 @@ export class Track {
     if (!set || !set.has(slot * LANE_STRIDE + lane)) return false;
     const grid = this.gridFor(roundId);
     if (!onGrid(slot, grid)) return false; // not on this round's grid at all
-    if (!roundById(roundId)?.sustains) return true;
+    if (!this.roundById(roundId)?.sustains) return true;
 
     // A lane held the whole way round has no gap to start after, so give it one
     // — otherwise it is occupied everywhere and sounds nowhere.
@@ -489,7 +496,7 @@ export class Track {
   runLengthAt(roundId, lane, slot) {
     if (!this.isRunStart(roundId, lane, slot)) return 0;
     const grid = this.gridFor(roundId);
-    if (!roundById(roundId)?.sustains) return blockSteps(grid);
+    if (!this.roundById(roundId)?.sustains) return blockSteps(grid);
     const set = this.events[roundId];
     const loop = this.loopStepsFor(roundId);
     let n = 0;
@@ -527,7 +534,7 @@ export class Track {
   }
 
   isEmpty() {
-    return ROUNDS.every((r) => this.count(r.id) === 0);
+    return this.rounds.every((r) => this.count(r.id) === 0);
   }
 
   /** Plain snapshot — exactly what the link codec serialises. */

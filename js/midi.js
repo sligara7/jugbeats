@@ -17,8 +17,9 @@
 // track is already what it wants: quantised notes on a grid, at a stated tempo,
 // grouped by instrument. This is closer to a re-serialisation than a conversion.
 
-import { ROUNDS, STEPS_PER_BAR, roundById, laneCount } from './track.js';
-import { SCALE_STEPS } from './dsp.js';
+import { STEPS_PER_BAR } from './track.js';
+import { MINOR_PENTATONIC as DEFAULT_SCALE } from './dsp.js';
+
 import { SWING } from './clock.js';
 
 /**
@@ -92,11 +93,11 @@ const DRUM_TICKS = TICKS_PER_STEP / 2;
  * lanes of the melody (root, flat third, fifth, octave) come out as the four
  * pitches she heard.
  */
-export function degreeToMidi(degree, octaves = 0) {
-  const n = SCALE_STEPS.length;
+export function degreeToMidi(degree, octaves = 0, scale = DEFAULT_SCALE) {
+  const n = scale.length;
   const idx = ((degree % n) + n) % n;
   const oct = Math.floor(degree / n) + octaves;
-  return ROOT_MIDI + 12 * oct + SCALE_STEPS[idx];
+  return ROOT_MIDI + 12 * oct + scale[idx];
 }
 
 // ---------------------------------------------------------------------------
@@ -158,18 +159,22 @@ function tickOf(step) {
 function notesOf(track, round, totalSteps) {
   const spec = CHANNELS[round.id];
   const loop = track.loopStepsFor(round.id);
-  const grid = track.gridFor(round.id);
   const out = [];
 
-  for (let step = 0; step < totalSteps; step += grid) {
+  // ONE STEP AT A TIME rather than striding by the grid, because a grid may be a
+  // RHYTHM LOCK — a list of positions with uneven gaps — and striding by a list
+  // is not a thing. runLengthAt already returns 0 anywhere a run does not start,
+  // so walking every sixteenth costs a few dozen extra checks and is correct for
+  // both kinds of grid.
+  for (let step = 0; step < totalSteps; step++) {
     const slot = ((step % loop) + loop) % loop;
-    for (let lane = 0; lane < laneCount(round.id); lane++) {
+    for (let lane = 0; lane < track.laneCount(round.id); lane++) {
       const length = track.runLengthAt(round.id, lane, slot);
       if (length === 0) continue;
 
       const note = spec.notes
         ? spec.notes[lane]
-        : degreeToMidi(round.lanes[lane].degree ?? 0, spec.octaves);
+        : degreeToMidi(round.lanes[lane].degree ?? 0, spec.octaves, track.scale);
 
       // A drum is a struck object and its length is its own; a pitched note is
       // as long as she held it (dec:drums-do-not-sustain).
@@ -244,7 +249,7 @@ function tempoTrack(bpm) {
  * no more belongs in the file than it belongs in the link.
  */
 export function encodeMidi(track) {
-  const rounds = ROUNDS.filter((r) => track.accepted.has(r.id) && track.count(r.id) > 0);
+  const rounds = track.rounds.filter((r) => track.accepted.has(r.id) && track.count(r.id) > 0);
   const totalSteps = track.compositeBars * STEPS_PER_BAR;
 
   const tracks = [tempoTrack(track.bpm)];

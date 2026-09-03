@@ -10,8 +10,7 @@
 
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
-import { Track, ROUNDS, GRID, FINE_GRID, quantise, chordAt, setRounds, isLocked } from './track.js';
-import { setScale } from './dsp.js';
+import { Track, GRID, FINE_GRID, quantise, chordAt, isLocked } from './track.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
 import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
@@ -47,9 +46,6 @@ function whichPalette() {
 }
 
 const palette = whichPalette();
-// The scale before the rounds, because a round's lanes name scale degrees.
-if (palette.scale) setScale(palette.scale, palette.scaleName);
-setRounds(palette.rounds);
 
 /**
  * A SHARED TRACK ARRIVES AT ITS OWN PALETTE'S PAGE, even if the link pointed
@@ -95,9 +91,11 @@ const voices = new Voices(ctx, { palette });
 
 // A track may already be in the address bar, because someone sent one. If so it
 // is hers to hear and take apart, so every round is open from the start.
-const incoming = trackFromLocation();
-const track = incoming ?? new Track();
-track.paletteId = palette.id;
+// THE COMPOSITION ROOT DOES THE COMPOSING (dec:shell-is-the-composition-root).
+// The palette is handed to the track, which hands it to the session, the link
+// and the exporter — every one of which already receives a track.
+const incoming = trackFromLocation(palette);
+const track = incoming ?? new Track({ palette });
 const clock = new Clock(ctx, { bpm: track.bpm, swing: palette.swing });
 const session = new Session(track);
 if (incoming) session.openEverything();
@@ -224,7 +222,7 @@ clock.onSchedule((from, to, timeOf) => {
       voices.playClick(timeOf(step), { accent: step % STEPS_PER_BAR === 0 });
     }
 
-    for (const round of ROUNDS) {
+    for (const round of track.rounds) {
       // Only rounds she has KEPT play back. The one in her hands is heard live.
       if (!track.accepted.has(round.id) && round.id !== session.round.id) continue;
       // A silenced round stops looping. Her LIVE taps are unaffected — they go
@@ -375,7 +373,7 @@ function refresh() {
   // Only once the whole track is finished, and it stays out of the way until
   // then. A shared link arrives with every round already accepted, so the
   // grown-up who opens her beat on a laptop has it immediately.
-  el('midi').hidden = !ROUNDS.every((r) => track.accepted.has(r.id));
+  el('midi').hidden = !track.rounds.every((r) => track.accepted.has(r.id));
 
   const undo = resetAction();
   el('reset').hidden = undo === null;
@@ -386,7 +384,7 @@ function refresh() {
 
   const strip = el('rounds');
   strip.innerHTML = '';
-  ROUNDS.forEach((r, i) => {
+  track.rounds.forEach((r, i) => {
     const b = document.createElement('button');
     b.className = 'chip';
     b.textContent = r.label;
@@ -633,7 +631,7 @@ session.onNudge((n) => {
       break;
     case 'round-kept':
       // The click retires here: from now on her own beat is the click.
-      if (ROUNDS[n.index]?.click) voices.setClickLevel(0, 1.2);
+      if (track.rounds[n.index]?.click) voices.setClickLevel(0, 1.2);
       flash('kept — it keeps playing underneath');
       break;
     case 'next-round':

@@ -11,7 +11,7 @@
 // actually breaks schedulers in the wild: a wake-up that arrives late.
 
 import { Clock, STEPS_PER_BAR } from '../js/clock.js';
-import { Track, quantise, GRID, ROUNDS } from '../js/track.js';
+import { Track, quantise, GRID } from '../js/track.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -314,7 +314,7 @@ console.log('\nlayers can be different lengths, and they meet again');
   // part drifts apart and comes back together every twelve bars — the Kashmir
   // effect, reached with no notion of a time signature anywhere in the code.
   const t = new Track();
-  check('every round starts the same length', ROUNDS.every((r) => t.barsFor(r.id) === 4));
+  check('every round starts the same length', t.rounds.every((r) => t.barsFor(r.id) === 4));
   check('so everything meets every four bars', t.compositeBars === 4, `${t.compositeBars}`);
 
   t.setBars('r3', 3);
@@ -362,7 +362,7 @@ console.log('\na round can go to sixteenths without dragging the others with it'
   // of the genre and unreachable at eighths. Eighths stay the default because
   // they are the forgiving grid: halving it halves the snapping tolerance.
   const t = new Track();
-  check('every round starts on eighths', ROUNDS.every((r) => t.gridFor(r.id) === 2));
+  check('every round starts on eighths', t.rounds.every((r) => t.gridFor(r.id) === 2));
 
   t.setGrid('r1', 1);
   check('the drums can go fine', t.gridFor('r1') === 1);

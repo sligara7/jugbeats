@@ -11,7 +11,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { encodeWav } from './wav.mjs';
-import { SCALE_STEPS, ROOT_HZ } from '../js/dsp.js';
+import { MINOR_PENTATONIC as SCALE_STEPS, ROOT_HZ } from '../js/dsp.js';
 import {
   renderPadVoice, renderBreath, renderMallet, renderIdiophone, renderMarkTree, reverb, CALM,
 } from '../js/ethereal.js';

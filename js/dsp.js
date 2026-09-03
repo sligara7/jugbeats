@@ -474,25 +474,16 @@ export const MINOR_PENTATONIC = [0, 3, 5, 7, 10];
 export const WHOLE_TONE = [0, 2, 4, 6, 8, 10];
 
 /**
- * The scale in force. A LIVE BINDING, set by the palette, the same arrangement
- * ROUNDS uses in track.js and for the same reason: every importer sees the swap
- * without any of them having to learn that palettes exist.
+ * The default, for anything that does not care which palette it is in.
+ *
+ * THIS IS A DEFAULT AND NOT A SETTING. It was briefly a mutable `export let`
+ * with a setter, which worked because ES module live bindings meant no importer
+ * had to change — and that apparent cheapness was exactly the problem, because
+ * every consumer then depended on state somebody else had set. The scale now
+ * arrives as an argument, from the palette, by way of the track.
  */
-export let SCALE_STEPS = MINOR_PENTATONIC;
-export let SCALE_NAME = 'minor pentatonic';
-
-/**
- * Point the engine at a palette's scale. Call ONCE, before anything reads a
- * track — changing it later would re-pitch notes already recorded against it.
- */
-export function setScale(steps, name) {
-  if (!Array.isArray(steps) || steps.length < 2) {
-    throw new Error('a scale needs at least two degrees');
-  }
-  SCALE_STEPS = steps;
-  SCALE_NAME = name ?? 'custom';
-  return SCALE_STEPS;
-}
+export const SCALE_STEPS = MINOR_PENTATONIC;
+export const SCALE_NAME = 'minor pentatonic';
 
 /**
  * The chords the music sits on, one per bar. ONE CHORD: it stays home.
@@ -530,11 +521,11 @@ export const ROOT_HZ = 65.41;
  * the scale into the next octave rather than stopping, so more lanes is always
  * a legal thing to ask for.
  */
-export function degreeToHz(degree, octaves = 0) {
-  const n = SCALE_STEPS.length;
+export function degreeToHz(degree, octaves = 0, scale = MINOR_PENTATONIC) {
+  const n = scale.length;
   const idx = ((degree % n) + n) % n;
   const oct = Math.floor(degree / n) + octaves;
-  return ROOT_HZ * Math.pow(2, oct + SCALE_STEPS[idx] / 12);
+  return ROOT_HZ * Math.pow(2, oct + scale[idx] / 12);
 }
 
 export const VOICES = {

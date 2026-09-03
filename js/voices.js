@@ -15,7 +15,7 @@
 //
 // This part never reads her track and never reads the screen.
 
-import { renderClick, degreeToHz, SCALE_STEPS, PROGRESSION, NEUTRAL } from './dsp.js';
+import { renderClick, degreeToHz, PROGRESSION, NEUTRAL } from './dsp.js';
 import { PHONK } from './palettes.js';
 
 /**
@@ -25,7 +25,7 @@ import { PHONK } from './palettes.js';
  * and this used to be captured at module load. A six-note scale would have had
  * its top note silently unrendered.
  */
-const degrees = () => SCALE_STEPS.map((_, i) => i);
+const degrees = (palette) => palette.scale.map((_, i) => i);
 
 /**
  * Per-voice level, applied on top of whatever the caller asks for.
@@ -278,10 +278,10 @@ export class Voices {
         const wanted = this.lengthsFor(name);
         for (const len of lengthIdx) {
           if (!wanted.includes(len)) continue;
-          for (const degree of degrees()) {
+          for (const degree of degrees(this.palette)) {
             const key = `${name}:${degree}:${chord}:${len}`;
             if (this.pitched.has(key)) continue;
-            const hz = degreeToHz(degree, spec.octaves ?? 0) * shift;
+            const hz = degreeToHz(degree, spec.octaves ?? 0, this.palette.scale) * shift;
             this.pitched.set(
               key,
               toBuffer(this.ctx, spec.render(sr, hz, this.shaping[name], { seconds: LENGTHS[len] }), sr)
@@ -365,7 +365,7 @@ export class Voices {
    */
   play(voice, { degree = 0, time, gain = 1, chord = 0, seconds } = {}) {
     const at = time ?? this.ctx.currentTime;
-    const n = degrees().length;
+    const n = degrees(this.palette).length;
     const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
     const len = nearestLength(seconds ?? LENGTHS[1]);
     const buf =
@@ -398,7 +398,7 @@ export class Voices {
  * The recorded half picks a rendered length once the run is known.
  */
 Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
-  const n = degrees().length;
+  const n = degrees(this.palette).length;
   const c = ((chord % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length;
   const buf = this.buffer(voice, ((degree % n) + n) % n, c, LENGTHS.length - 1);
   if (!buf) return { release() {} };

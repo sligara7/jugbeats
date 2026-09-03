@@ -7,7 +7,7 @@
 // opens with her kick as a mystery pitch, fails at exactly the moment it was
 // supposed to matter — so this parses the bytes back rather than trusting them.
 
-import { Track, ROUNDS } from '../js/track.js';
+import { Track } from '../js/track.js';
 import { encodeMidi, degreeToMidi, _internal } from '../js/midi.js';
 
 const { PPQ, TICKS_PER_STEP, SWING_TICKS } = _internal;
@@ -101,7 +101,7 @@ function fullTrack() {
   t.record('r2', 0, 4);  t.record('r2', 1, 12);  // hat, cowbell
   t.record('r3', 0, 0);  t.record('r3', 0, 2);   // a held root on the 808
   t.record('r4', 1, 16);                          // one flat third on the melody
-  for (const r of ROUNDS) t.accept(r.id);
+  for (const r of t.rounds) t.accept(r.id);
   return t;
 }
 
@@ -116,7 +116,7 @@ console.log('\nthe file itself');
     f.ntrks === f.tracks.length, `${f.ntrks} vs ${f.tracks.length}`);
   check('division is the stated resolution', f.division === PPQ, `${f.division}`);
   check('every track ends with an end-of-track meta', f.tracks.every((t) => t.ended));
-  check('one tempo map plus one track per round', f.tracks.length === 1 + ROUNDS.length,
+  check('one tempo map plus one track per round', f.tracks.length === 1 + fullTrack().rounds.length,
     `${f.tracks.length}`);
 }
 

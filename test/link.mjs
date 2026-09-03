@@ -6,7 +6,7 @@
 // sitting in someone's chat, and nothing else in the design would notice if it
 // stopped working. iface:track-format is the one PUBLISHED boundary here.
 
-import { Track, ROUNDS, LANE_STRIDE, laneCount } from '../js/track.js';
+import { Track, LANE_STRIDE, } from '../js/track.js';
 
 // The codec is browser code and reaches for btoa/atob. Supply them rather than
 // changing the shipping code to suit a test.
@@ -23,7 +23,7 @@ const check = (name, ok, detail = '') => {
 };
 
 const sameNotes = (a, b) =>
-  ROUNDS.every((r) => {
+  a.rounds.every((r) => {
     const x = [...a.events[r.id]].sort((p, q) => p - q).join(',');
     const y = [...b.events[r.id]].sort((p, q) => p - q).join(',');
     return x === y;
@@ -63,9 +63,9 @@ console.log('\nthe link is short enough to paste into a chat');
 
 {
   const full = new Track({ bars: 2 });
-  for (const r of ROUNDS) {
+  for (const r of full.rounds) {
     for (let s = 0; s < full.loopSteps; s += 2) {
-      for (let n = 0; n < laneCount(r.id); n++) full.record(r.id, n, s);
+      for (let n = 0; n < full.laneCount(r.id); n++) full.record(r.id, n, s);
     }
   }
   const sparse = new Track({ bars: 2 });
@@ -156,25 +156,25 @@ console.log('\nevery version we have ever shipped still decodes');
     check('  its own length is kept, not forced', t.bars === c.bars, `${t.bars} bars`);
 
     check('  every note sits on a lane the round still has',
-      t.notes(ROUNDS[0].id).every((n) => n.lane < laneCount('r1')) &&
-      t.notes(ROUNDS[2].id).every((n) => n.lane < laneCount('r3')));
+      t.notes(t.rounds[0].id).every((n) => n.lane < t.laneCount('r1')) &&
+      t.notes(t.rounds[2].id).every((n) => n.lane < t.laneCount('r3')));
 
     check('  it plays at a sensible tempo', t.bpm >= 60 && t.bpm <= 170, `${t.bpm} bpm`);
     if (c.bpm) check('  at exactly the tempo it was made at', t.bpm === c.bpm);
 
     // Nothing before v5 knew about grids, so every round must widen to eighths.
     check('  every round comes back on the eighth grid',
-      ROUNDS.every((r) => t.gridFor(r.id) === 2),
-      ROUNDS.map((r) => t.gridFor(r.id)).join(','));
+      t.rounds.every((r) => t.gridFor(r.id) === 2),
+      t.rounds.map((r) => t.gridFor(r.id)).join(','));
 
     if (c.version < 4) {
       // Before v4 one loop length covered the whole track.
       check('  all its rounds get the one length it had',
-        ROUNDS.every((r) => t.barsFor(r.id) === c.bars));
+        t.rounds.every((r) => t.barsFor(r.id) === c.bars));
     } else {
       check('  its per-round lengths survive',
         t.barsFor('r3') === 3 && t.barsFor('r1') === 4,
-        ROUNDS.map((r) => t.barsFor(r.id)).join(','));
+        t.rounds.map((r) => t.barsFor(r.id)).join(','));
     }
   }
 
@@ -245,7 +245,7 @@ console.log('\ndifferent loop lengths survive the round trip');
   const back = decode(encode(t));
   check('each round keeps its own length',
     back.barsFor('r1') === 4 && back.barsFor('r2') === 2 && back.barsFor('r3') === 3,
-    `${ROUNDS.map((r) => back.barsFor(r.id)).join(',')}`);
+    `${back.rounds.map((r) => back.barsFor(r.id)).join(',')}`);
   check('so it meets on the same cycle she heard',
     back.compositeBars === t.compositeBars, `${back.compositeBars} bars`);
   check('and a note inside a short round survives',

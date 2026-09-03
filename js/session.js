@@ -13,7 +13,7 @@
 //
 // It reads the track and never sits on the audio path.
 
-import { ROUNDS } from './track.js';
+
 
 /** Taps needed to set a tempo, and the range a child's beat can land in. */
 const TAPS_TO_SET = 4;
@@ -54,7 +54,7 @@ export class Session {
   }
 
   get round() {
-    return ROUNDS[this.roundIndex];
+    return this.track.rounds[this.roundIndex];
   }
 
   get recording() {
@@ -199,7 +199,7 @@ export class Session {
     this.track.accept(id);
     this._emit({ kind: 'round-kept', roundId: id, index: this.roundIndex });
 
-    if (this.roundIndex + 1 < ROUNDS.length) {
+    if (this.roundIndex + 1 < this.track.rounds.length) {
       this.roundIndex++;
       this.state = 'tempo'; // idle, waiting for START — the tempo is already set
       this._emit({ kind: 'next-round', roundId: this.round.id, index: this.roundIndex });
@@ -245,13 +245,13 @@ export class Session {
   /** She can reach every accepted round, plus the next one along. */
   furthestReachable() {
     let i = 0;
-    while (i < ROUNDS.length && this.track.accepted.has(ROUNDS[i].id)) i++;
-    return Math.min(i, ROUNDS.length - 1);
+    while (i < this.track.rounds.length && this.track.accepted.has(this.track.rounds[i].id)) i++;
+    return Math.min(i, this.track.rounds.length - 1);
   }
 
   /** A shared track arrives finished, so every round is hers to revisit. */
   openEverything() {
-    for (const r of ROUNDS) if (this.track.count(r.id) > 0) this.track.accept(r.id);
+    for (const r of this.track.rounds) if (this.track.count(r.id) > 0) this.track.accept(r.id);
     this.roundIndex = 0;
     this.state = 'tempo';
     // IT ARRIVED WITH ITS TEMPO. Whoever made this chose a speed and it travelled

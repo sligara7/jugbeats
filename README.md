@@ -171,6 +171,13 @@ Two things worth knowing, because they explain most of the code:
 - **The keys never reach back.** Every part publishes what it offers and imports
   only from parts below it. `main.js` constructs everything and nothing depends
   on it. Two dependency cycles got caught this way before a line of code existed.
+- **Composed, injected, never ambient.** No inheritance anywhere — five classes,
+  no `extends`. Every collaborator arrives through a constructor, and there is no
+  module-level mutable state for another module to read. The palette is handed to
+  the `Track`, which hands it to the session, the link and the exporter, because
+  each of those already receives a track. `checkPalette` is the protocol: a
+  shape, validated where it is consumed, since JavaScript has no way to declare
+  one and this project has no build step to check it with.
 
 **It runs anywhere.** Android and iOS, any modern browser. The only
 platform-specific code is additive and guarded: an iOS audio-session request

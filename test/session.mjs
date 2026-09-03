@@ -5,7 +5,7 @@
 // Guards dec:two-thumbs-loop-pedal and dec:she-sets-the-tempo. The state
 // machine is small on purpose, and small things are exactly what quietly break.
 
-import { Track, ROUNDS } from '../js/track.js';
+import { Track } from '../js/track.js';
 import { Session } from '../js/session.js';
 
 let failures = 0;
@@ -256,10 +256,10 @@ console.log('\nshe can only reach rounds she has earned');
 
   // A shared track arrives finished, so all of it is hers to take apart.
   const shared = new Track();
-  for (const r of ROUNDS) shared.record(r.id, 0, 0);
+  for (const r of shared.rounds) shared.record(r.id, 0, 0);
   const s2 = new Session(shared);
   s2.openEverything();
-  check('a shared track opens every round', s2.furthestReachable() === ROUNDS.length - 1);
+  check('a shared track opens every round', s2.furthestReachable() === shared.rounds.length - 1);
 }
 
 console.log('\nLISTEN punches out of recording without ending anything');

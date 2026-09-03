@@ -11,14 +11,14 @@
 // perfectly, nothing errors, and the music is wrong — which is exactly the class
 // of silent-wrong-answer the version marker exists to stop.
 
-import { Track, ROUNDS, DEFAULT_ROUNDS, setRounds } from '../js/track.js';
+import { Track, DEFAULT_ROUNDS, checkPalette } from '../js/track.js';
 
 globalThis.btoa ??= (s) => Buffer.from(s, 'binary').toString('base64');
 globalThis.atob ??= (s) => Buffer.from(s, 'base64').toString('binary');
 globalThis.location ??= { href: 'https://sligara7.github.io/jugbeats/', hash: '' };
 
 const { encode, decode, paletteIdOf, _internal } = await import('../js/link.js');
-const { PHONK, CALM, PALETTES, byId, byKey } = await import('../js/palettes.js');
+const { PHONK, CALM, HAUNTED, PALETTES, byId, byKey } = await import('../js/palettes.js');
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -49,10 +49,8 @@ console.log('\nthe palettes themselves');
 console.log('\nthe palette travels in the link');
 
 {
-  setRounds(CALM.rounds);
-  const t = new Track({ bars: 2 });
+  const t = new Track({ bars: 2, palette: CALM });
   t.bpm = 68;
-  t.paletteId = CALM.id;
   t.record('r1', 0, 0);
   t.record('r1', 1, 8);
   t.accept('r1');
@@ -63,7 +61,7 @@ console.log('\nthe palette travels in the link');
   check('the palette can be read without decoding', paletteIdOf(link) === CALM.id,
     `got ${paletteIdOf(link)}`);
 
-  const back = decode(link);
+  const back = decode(link, CALM);
   check('the decoded track remembers its palette', back.paletteId === CALM.id,
     `got ${back.paletteId}`);
   check('the notes survive', back.count('r1') === t.count('r1'));
@@ -73,13 +71,12 @@ console.log('\nthe palette travels in the link');
 console.log('\na phonk track still says phonk');
 
 {
-  setRounds(DEFAULT_ROUNDS);
   const t = new Track({ bars: 2 });
   t.record('r1', 0, 0);
   t.accept('r1');
   const link = encode(t);
   check('palette id 0 by default', paletteIdOf(link) === 0);
-  check('and it round-trips', decode(link).paletteId === 0);
+  check('and it round-trips', decode(link, PHONK).paletteId === 0);
 }
 
 console.log('\nold links are phonk links, forever');
@@ -87,7 +84,6 @@ console.log('\nold links are phonk links, forever');
 {
   // A frozen v5 string, written before palettes existed. Its fourth byte was
   // reserved and always zero, which is why v6 could put the palette there.
-  setRounds(DEFAULT_ROUNDS);
   const v5 = (() => {
     const t = new Track({ bars: 2 });
     t.bpm = 138;
@@ -103,29 +99,37 @@ console.log('\nold links are phonk links, forever');
     return _internal.toB64Url(b);
   })();
 
-  const back = decode(v5);
+  const back = decode(v5, PHONK);
   check('a v5 link still decodes', back !== null);
   check('it reads as phonk', paletteIdOf(v5) === 0);
   check('its notes are intact', back.count('r1') === 1 && back.count('r2') === 1);
 }
 
-console.log('\nthe rounds actually swap');
+console.log('\nthe rounds belong to the track, not to a global');
 
 {
-  setRounds(DEFAULT_ROUNDS);
-  check('phonk round one is the drums', ROUNDS[0].lanes[0].voice === 'kick');
-  check('and does not sustain', ROUNDS[0].sustains === false);
+  const phonk = new Track({ bars: 2, palette: PHONK });
+  const calm = new Track({ bars: 2, palette: CALM });
 
-  setRounds(CALM.rounds);
-  check('calm round one is the handpan', ROUNDS[0].lanes[0].voice === 'handpan');
-  check('and DOES sustain — you hold a singing bowl', ROUNDS[0].sustains === true);
+  check('phonk round one is the drums', phonk.rounds[0].lanes[0].voice === 'kick');
+  check('and does not sustain', phonk.rounds[0].sustains === false);
+  check('calm round one is the handpan', calm.rounds[0].lanes[0].voice === 'handpan');
+  check('and DOES sustain — you hold a singing bowl', calm.rounds[0].sustains === true);
 
-  setRounds(DEFAULT_ROUNDS);
-  check('and it swaps back', ROUNDS[0].lanes[0].voice === 'kick');
+  // THE POINT OF THE REFACTOR: two tracks of different styles at once, which was
+  // impossible while the rounds and the scale were module globals.
+  check('both exist at the same time without interfering',
+    phonk.rounds[0].lanes[0].voice === 'kick' && calm.rounds[0].lanes[0].voice === 'handpan');
+  check('and each carries its own scale',
+    phonk.scale.length === 5 && new Track({ palette: HAUNTED }).scale.length === 6);
 
   let threw = false;
-  try { setRounds([{ id: 'r1' }]); } catch { threw = true; }
+  try { checkPalette({ rounds: [{ id: 'r1' }] }); } catch { threw = true; }
   check('a palette with the wrong number of rounds is refused', threw);
+
+  let threw2 = false;
+  try { checkPalette({ rounds: PHONK.rounds }); } catch { threw2 = true; }
+  check('and one with no scale is refused', threw2);
 }
 
 console.log('\na sent track is addressed to its own page');
@@ -147,10 +151,8 @@ console.log('\na sent track is addressed to its own page');
     homeFor(PHONK, site + 'ethereal/') === site, homeFor(PHONK, site + 'ethereal/'));
 
   // The whole round trip, as a share sheet would carry it.
-  setRounds(CALM.rounds);
-  const t = new Track({ bars: 2 });
+  const t = new Track({ bars: 2, palette: CALM });
   t.bpm = 68;
-  t.paletteId = CALM.id;
   t.record('r1', 0, 0);
   t.accept('r1');
   const sent = homeFor(CALM, site + 'ethereal/') + '#' + encode(t);
@@ -194,8 +196,7 @@ console.log('\nthe rhythm lock');
   check('and it is not a round that holds notes', locked.every((r) => !r.sustains));
 
   // Neither she nor a decoded link may talk it out of its rhythm.
-  setRounds(REGGAETON.rounds);
-  const t = new Track({ bars: 2 });
+  const t = new Track({ bars: 2, palette: REGGAETON });
   check('the track picks the lock up from the palette', isLocked(t.gridFor('r1')));
   check('setGrid refuses to unlock it', t.setGrid('r1', 1) === false);
   check('and it is still locked afterwards', isLocked(t.gridFor('r1')));
@@ -204,7 +205,6 @@ console.log('\nthe rhythm lock');
   // A tap anywhere near the beat is recorded ON the beat.
   const slot = t.record('r1', 0, 2.4);
   check('a sloppy tap is recorded on the pattern', onGrid(slot, dembow), `landed on ${slot}`);
-  setRounds(DEFAULT_ROUNDS);
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);

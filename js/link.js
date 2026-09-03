@@ -8,7 +8,7 @@
 // Governed by dec:track-in-the-url: the track travels inside the link, so there
 // is no server, no database and no account anywhere in this game.
 
-import { Track, ROUNDS, LANE_STRIDE, STEPS_PER_BAR, GRID } from './track.js';
+import { Track, LANE_STRIDE, STEPS_PER_BAR, GRID } from './track.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
 const VERSION = 6;
@@ -55,7 +55,7 @@ function encodeV6(track) {
   const maxSteps = track.maxLoopSteps;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
   const out = new Uint8Array(
-    4 + ROUNDS.length * 2 + ROUNDS.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
+    4 + track.rounds.length * 2 + track.rounds.length * bytesPerRound + 1 + SHAPED.length * CONTROLS.length
   );
 
   let p = 0;
@@ -64,10 +64,10 @@ function encodeV6(track) {
   out[p++] = Math.max(0, Math.min(255, track.bpm));
   out[p++] = track.paletteId & 0xff;
 
-  for (const round of ROUNDS) out[p++] = track.barsFor(round.id);
-  for (const round of ROUNDS) out[p++] = track.gridFor(round.id);
+  for (const round of track.rounds) out[p++] = track.barsFor(round.id);
+  for (const round of track.rounds) out[p++] = track.gridFor(round.id);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (const { slot, lane } of track.notes(round.id)) {
       const bit = slot * LANE_STRIDE + lane;
       out[p + (bit >> 3)] |= 1 << (bit & 7);
@@ -76,7 +76,7 @@ function encodeV6(track) {
   }
 
   let acceptedBits = 0;
-  ROUNDS.forEach((r, i) => { if (track.accepted.has(r.id)) acceptedBits |= 1 << i; });
+  track.rounds.forEach((r, i) => { if (track.accepted.has(r.id)) acceptedBits |= 1 << i; });
   out[p++] = acceptedBits;
 
   for (const inst of SHAPED) {
@@ -88,22 +88,21 @@ function encodeV6(track) {
   return out;
 }
 
-function decodeV6(bytes) {
+function decodeV6(bytes, palette) {
   let p = 1;
   const maxBars = bytes[p++] || 4;
   const bpm = bytes[p++] || 100;
-  const paletteId = bytes[p++] ?? 0;
+  p++; // the palette id, already read by the caller to choose `palette`
 
-  const track = new Track({ bars: maxBars });
+  const track = new Track({ bars: maxBars, palette });
   track.bpm = bpm;
-  track.paletteId = paletteId;
-  for (const round of ROUNDS) track.setBars(round.id, bytes[p++] || maxBars);
-  for (const round of ROUNDS) track.setGrid(round.id, bytes[p++] || GRID);
+  for (const round of track.rounds) track.setBars(round.id, bytes[p++] || maxBars);
+  for (const round of track.rounds) track.setGrid(round.id, bytes[p++] || GRID);
 
   const maxSteps = maxBars * STEPS_PER_BAR;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (let bit = 0; bit < maxSteps * LANE_STRIDE; bit++) {
       if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
     }
@@ -111,7 +110,7 @@ function decodeV6(bytes) {
   }
 
   const acceptedBits = bytes[p++] ?? 0;
-  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+  track.rounds.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
 
   for (const inst of SHAPED) {
     track.shaping[inst] = {};
@@ -136,21 +135,21 @@ function decodeV6(bytes) {
 // this decoder still works, and a live encoder would only have been a second
 // thing to keep correct — and, once VERSION moved to 6, a wrong one.)
 
-function decodeV5(bytes) {
+function decodeV5(bytes, palette) {
   let p = 1;
   const maxBars = bytes[p++] || 4;
   const bpm = bytes[p++] || 100;
   p++; // reserved
 
-  const track = new Track({ bars: maxBars });
+  const track = new Track({ bars: maxBars, palette });
   track.bpm = bpm;
-  for (const round of ROUNDS) track.setBars(round.id, bytes[p++] || maxBars);
-  for (const round of ROUNDS) track.setGrid(round.id, bytes[p++] || GRID);
+  for (const round of track.rounds) track.setBars(round.id, bytes[p++] || maxBars);
+  for (const round of track.rounds) track.setGrid(round.id, bytes[p++] || GRID);
 
   const maxSteps = maxBars * STEPS_PER_BAR;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (let bit = 0; bit < maxSteps * LANE_STRIDE; bit++) {
       if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
     }
@@ -158,7 +157,7 @@ function decodeV5(bytes) {
   }
 
   const acceptedBits = bytes[p++] ?? 0;
-  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+  track.rounds.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
 
   for (const inst of SHAPED) {
     track.shaping[inst] = {};
@@ -185,20 +184,20 @@ function decodeV5(bytes) {
 // (no encodeV4 — only DECODERS are kept forever; a frozen v4 string in the
 // test corpus is what proves this decoder still works.)
 
-function decodeV4(bytes) {
+function decodeV4(bytes, palette) {
   let p = 1;
   const maxBars = bytes[p++] || 4;
   const bpm = bytes[p++] || 100;
   p++; // reserved
 
-  const track = new Track({ bars: maxBars });
+  const track = new Track({ bars: maxBars, palette });
   track.bpm = bpm;
-  for (const round of ROUNDS) track.setBars(round.id, bytes[p++] || maxBars);
+  for (const round of track.rounds) track.setBars(round.id, bytes[p++] || maxBars);
 
   const maxSteps = maxBars * STEPS_PER_BAR;
   const bytesPerRound = Math.ceil((maxSteps * LANE_STRIDE) / 8);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (let bit = 0; bit < maxSteps * LANE_STRIDE; bit++) {
       if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
     }
@@ -206,7 +205,7 @@ function decodeV4(bytes) {
   }
 
   const acceptedBits = bytes[p++] ?? 0;
-  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+  track.rounds.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
 
   for (const inst of SHAPED) {
     track.shaping[inst] = {};
@@ -240,7 +239,7 @@ function decodeV4(bytes) {
 // what proves this decoder still works, and a live encoder would only have been
 // a second thing to keep correct.
 
-function decodeV3(bytes) {
+function decodeV3(bytes, palette) {
   let p = 1;
   const bars = bytes[p++] || 4;
   const bpm = bytes[p++] || 100;
@@ -251,7 +250,7 @@ function decodeV3(bytes) {
   const steps = bars * STEPS_PER_BAR;
   const bytesPerRound = Math.ceil((steps * LANE_STRIDE) / 8);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (let bit = 0; bit < steps * LANE_STRIDE; bit++) {
       if (bytes[p + (bit >> 3)] & (1 << (bit & 7))) track.events[round.id].add(bit);
     }
@@ -259,7 +258,7 @@ function decodeV3(bytes) {
   }
 
   const acceptedBits = bytes[p++] ?? 0;
-  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+  track.rounds.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
 
   for (const inst of SHAPED) {
     track.shaping[inst] = {};
@@ -283,7 +282,7 @@ function decodeV3(bytes) {
 
 const V2_LANES = 2;
 
-function decodeV2(bytes) {
+function decodeV2(bytes, palette) {
   let p = 1;
   const bars = bytes[p++] || 2;
   const bpm = bytes[p++] || 100;
@@ -293,7 +292,7 @@ function decodeV2(bytes) {
   track.bpm = bpm;
   const bytesPerRound = Math.ceil((bars * STEPS_PER_BAR * V2_LANES) / 8);
 
-  for (const round of ROUNDS) {
+  for (const round of track.rounds) {
     for (let bit = 0; bit < bars * STEPS_PER_BAR * V2_LANES; bit++) {
       if (!(bytes[p + (bit >> 3)] & (1 << (bit & 7)))) continue;
       const slot = Math.floor(bit / V2_LANES);
@@ -304,7 +303,7 @@ function decodeV2(bytes) {
   }
 
   const acceptedBits = bytes[p++] ?? 0;
-  ROUNDS.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
+  track.rounds.forEach((r, i) => { if (acceptedBits & (1 << i)) track.accepted.add(r.id); });
 
   for (const inst of SHAPED) {
     track.shaping[inst] = {};
@@ -347,7 +346,7 @@ function v1Destination(layer, lane) {
   return null;
 }
 
-function decodeV1(bytes) {
+function decodeV1(bytes, palette) {
   let p = 1;
   const bars = bytes[p++] || 4;
   const loopSteps = bars * STEPS_PER_BAR;
@@ -378,7 +377,7 @@ function decodeV1(bytes) {
   // v1 had no tempo and no notion of accepting a round. Everything she made is
   // finished by definition — it arrived as a shared link.
   track.bpm = 138;
-  for (const r of ROUNDS) if (track.count(r.id) > 0) track.accepted.add(r.id);
+  for (const r of track.rounds) if (track.count(r.id) > 0) track.accepted.add(r.id);
   return track;
 }
 
@@ -401,12 +400,12 @@ export function encode(track) {
  * the same way — a link from a newer build should degrade to "make your own"
  * rather than to an error.
  */
-export function decode(str) {
+export function decode(str, palette) {
   if (!str) return null;
   try {
     const bytes = fromB64Url(str);
     const decoder = DECODERS[bytes[0]];
-    return decoder ? decoder(bytes) : null;
+    return decoder ? decoder(bytes, palette) : null;
   } catch {
     return null;
   }
@@ -418,16 +417,17 @@ export function urlFor(track, base = location.href) {
   return u.toString();
 }
 
-export function trackFromLocation() {
-  return decode(location.hash.replace(/^#/, ''));
+export function trackFromLocation(palette) {
+  return decode(location.hash.replace(/^#/, ''), palette);
 }
 
 /**
  * Which palette a link was made with, WITHOUT decoding it.
  *
- * A chicken-and-egg problem otherwise: decoding needs ROUNDS to be set, ROUNDS
- * comes from the palette, and the palette is inside the link. Reading byte 3 is
- * enough to break the cycle, and it is cheap.
+ * A chicken-and-egg problem otherwise: decoding needs a palette, and the palette
+ * is inside the link. Reading byte 3 without decoding breaks the cycle, and it
+ * is what lets the caller INJECT the right palette into `decode` rather than
+ * this module having to know what palettes exist.
  *
  * Anything older than v6 is phonk by definition, and anything unreadable is
  * phonk too — the caller will get null from `decode` a moment later and open an
