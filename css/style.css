@@ -209,6 +209,15 @@ html, body {
 /* Kept rounds get a tick, so what is finished is visible at a glance. */
 .chip.kept::before { content: "✓ "; opacity: 0.7; }
 
+/* The add-a-section chip (dec:a-segment-is-a-whole-track). Deliberately quieter
+   than a round chip: it is an occasional act, not one of the four things she is
+   choosing between, and it appears only once a segment is finished. */
+.chip.section {
+  border-style: dashed;
+  opacity: 0.72;
+}
+.chip.section:active { opacity: 1; }
+
 /* A silenced round has to look silenced from across the room — dimmed AND
    struck through, because dimming alone reads as "disabled" and she needs to
    know it is still hers and coming back. */

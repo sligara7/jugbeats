@@ -280,6 +280,29 @@ export class Session {
     return Math.min(i, this.track.rounds.length - 1);
   }
 
+  /**
+   * Point this session at a different segment of the song
+   * (dec:a-segment-is-a-whole-track).
+   *
+   * SWAPPING THE TRACK RATHER THAN THE SESSION, deliberately. The composition
+   * root registers one nudge handler on one session at startup; replacing the
+   * session would silently drop it and the screen would stop responding while
+   * everything still appeared to work. One object that can change what it is
+   * holding has no such failure mode.
+   *
+   * The TEMPO SURVIVES, because it belongs to the song rather than to a
+   * segment: a chorus at a different speed from its verse is not an
+   * arrangement, it is a mistake, and she already tapped it once.
+   */
+  loadSegment(track) {
+    this.track = track;
+    this.roundIndex = 0;
+    this._skipArmed = null;
+    this.state = 'tempo';
+    this._emit({ kind: 'segment-changed', roundId: this.round.id, index: 0 });
+    return true;
+  }
+
   /** A shared track arrives finished, so every round is hers to revisit. */
   openEverything() {
     for (const r of this.track.rounds) if (this.track.count(r.id) > 0) this.track.accept(r.id);

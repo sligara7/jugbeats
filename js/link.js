@@ -9,6 +9,7 @@
 // is no server, no database and no account anywhere in this game.
 
 import { Track, LANE_STRIDE, STEPS_PER_BAR, GRID, CHORD_BARS } from './track.js';
+import { Song } from './song.js';
 
 /** Current format version. Bump when the layout changes; NEVER reuse a number. */
 const VERSION = 7;
@@ -427,6 +428,102 @@ function decodeV1(bytes, palette) {
 const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5, 6: decodeV6, 7: decodeV7 };
 
 // ---------------------------------------------------------------------------
+// v8 — a SONG: unique segments, and an order that indexes them
+// ---------------------------------------------------------------------------
+//
+// dec:a-segment-is-a-whole-track. A song is an ordered list of whole tracks, so
+// this version is a CONTAINER rather than a new track layout: byte 0 says 8,
+// then a segment count, then the order, then that many v7 payloads back to back.
+// Each segment is byte-identical to what v7 would have written on its own.
+//
+// WHY A CONTAINER AND NOT A LAYOUT. The alternative was one payload with a
+// segment dimension threaded through every field, which would have made a song
+// a different KIND of thing from a track and required every reader to learn it.
+// This way a segment is exactly a v7 track, decodeV7 is reused verbatim, and the
+// only new knowledge is where each one starts.
+//
+// THE ORDER IS WHERE THE ECONOMY LIVES. A segment played four times costs its
+// recording once and four bytes. ABABCB is three recordings and six bytes of
+// order, which is why a song is as expensive as it is VARIED rather than as
+// expensive as it is long.
+//
+// NOTHING OLDER BREAKS AND NOTHING OLDER MOVES. Every link already sent is v1
+// to v7 and still decodes to exactly the track it always did; `decodeSong`
+// wraps it as a one-segment song, which is what it always was.
+
+const SONG_VERSION = 8;
+
+/** How many bytes a v7 payload occupies, read from its own header. Computed the
+ *  same way decodeV7 computes its chord offset, so the two cannot disagree. */
+function v7Length(bytes, at, rounds) {
+  const maxBars = bytes[at + 1] || 4;
+  const bytesPerRound = Math.ceil((maxBars * STEPS_PER_BAR * LANE_STRIDE) / 8);
+  return 4 + rounds * 2 + rounds * bytesPerRound + 1
+    + SHAPED.length * CONTROLS.length + CHORD_BARS;
+}
+
+export function encodeSong(song) {
+  // A song that is one segment played once IS a track, and writing it as v7
+  // keeps every such link exactly as short as it has always been. A person who
+  // never makes a second section never pays for the feature.
+  if (song.isSingle) return encode(song.segments[0]);
+
+  const parts = song.segments.map((t) => encodeV7(t));
+  const total = 3 + song.order.length + parts.reduce((n, b) => n + b.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  out[p++] = SONG_VERSION;
+  out[p++] = song.segments.length & 0xff;
+  out[p++] = song.order.length & 0xff;
+  for (const i of song.order) out[p++] = i & 0xff;
+  for (const b of parts) { out.set(b, p); p += b.length; }
+  return toB64Url(out);
+}
+
+export function decodeSong(str, palette) {
+  if (!str) return null;
+  let bytes;
+  try { bytes = fromB64Url(str); } catch { return null; }
+  if (bytes[0] !== SONG_VERSION) {
+    // Every version before this one is a single track, which is a song of one.
+    const track = decode(str, palette);
+    return track ? Song.of(track) : null;
+  }
+  try {
+    const count = bytes[1];
+    const orderLen = bytes[2];
+    let p = 3;
+    const order = [];
+    for (let i = 0; i < orderLen; i++) order.push(bytes[p++]);
+
+    const rounds = palette.rounds.length;
+    const segments = [];
+    for (let i = 0; i < count; i++) {
+      const len = v7Length(bytes, p, rounds);
+      const seg = decodeV7(bytes.subarray(p, p + len), palette);
+      if (!seg) return null;
+      segments.push(seg);
+      p += len;
+    }
+    // An order naming a segment that is not there would play silence with no
+    // way to tell why, so it is dropped rather than trusted.
+    return new Song({ segments, order: order.filter((i) => i < segments.length) });
+  } catch {
+    return null;
+  }
+}
+
+export function urlForSong(song, base = location.href) {
+  const u = new URL(base);
+  u.hash = encodeSong(song);
+  return u.toString();
+}
+
+export function songFromLocation(palette) {
+  return decodeSong(location.hash.replace(/^#/, ''), palette);
+}
+
+// ---------------------------------------------------------------------------
 // The boundary
 // ---------------------------------------------------------------------------
 
@@ -494,10 +591,17 @@ export function paletteIdFromLocation() {
  * Hand a track to the phone's share sheet, falling back to the clipboard.
  * Must be called from inside a user gesture or iOS refuses the sheet.
  */
-export async function share(track, { title = 'Listen to my beat', base } = {}) {
+export async function share(what, { title = 'Listen to my beat', base } = {}) {
+  // A SONG OR A TRACK, and it must be whichever it actually is. Sharing a song
+  // through urlFor would encode segment one and silently drop the rest, which
+  // is the exact class of quiet wrong answer the version marker exists to stop
+  // — so the shape is checked rather than assumed.
+  const song = what && Array.isArray(what.segments) ? what : null;
   // `base` lets the caller address the link to the palette's own page rather
   // than to whichever page happened to build it (dec:styles-are-palettes).
-  const url = base ? urlFor(track, base) : urlFor(track);
+  const url = song
+    ? (base ? urlForSong(song, base) : urlForSong(song))
+    : (base ? urlFor(what, base) : urlFor(what));
   try {
     if (navigator.share) {
       await navigator.share({ title, text: 'I made this beat', url });

@@ -11,9 +11,10 @@
 import { Clock, STEPS_PER_BAR } from './clock.js';
 import { Voices } from './voices.js';
 import { Track, GRID, FINE_GRID, quantise, isLocked } from './track.js';
+import { Song } from './song.js';
 import { Stage } from './stage.js';
 import { Session, COUNT_IN_BARS } from './session.js';
-import { trackFromLocation, share, paletteIdFromLocation } from './link.js';
+import { songFromLocation, share, paletteIdFromLocation } from './link.js';
 import { saveMidi } from './midi.js';
 import { byId, byKey, PHONK, paletteFromLocation, homeFor, siteRoot } from './palettes.js';
 
@@ -94,8 +95,50 @@ const voices = new Voices(ctx, { palette });
 // THE COMPOSITION ROOT DOES THE COMPOSING (dec:shell-is-the-composition-root).
 // The palette is handed to the track, which hands it to the session, the link
 // and the exporter — every one of which already receives a track.
-const incoming = trackFromLocation(palette);
-const track = incoming ?? new Track({ palette });
+const incoming = songFromLocation(palette);
+/**
+ * THE SONG IS THE THING NOW, and a track is a song of one
+ * (dec:a-segment-is-a-whole-track). Everything that came before this made
+ * exactly one segment and still does until she asks for a second, so `track`
+ * below is the segment she is working on — which is what every part of the game
+ * that is not playback still means by "the track".
+ */
+const song = incoming ?? Song.of(new Track({ palette }));
+let editing = 0;                       // which segment she is recording into
+
+/**
+ * WHEN THE WHOLE SONG PLAYS RATHER THAN THE LOOP SHE IS HOLDING.
+ *
+ * Only once every round of the segment she is on is finished AND there is more
+ * than one thing in the order. While she is building, the loop pedal must keep
+ * behaving exactly as it always has — a segment repeating under her hands — or
+ * this feature would have changed the instrument rather than added to it.
+ */
+/**
+ * ADD A SECTION — the whole point of the song existing.
+ *
+ * A new empty segment at the end of the order, with the same palette and the
+ * same length as the one she just finished. She records it exactly as she
+ * recorded the first, and when it is done the song plays verse then chorus.
+ *
+ * IT STARTS EMPTY RATHER THAN AS A COPY, and that is the shape the owner chose:
+ * a segment is a whole recording precisely so a chorus can be a different tune
+ * rather than a louder verse. Handing her a duplicate would quietly push every
+ * song back towards the cheap shape that was rejected.
+ */
+function addSection() {
+  const fresh = new Track({ bars: track.bars, palette });
+  fresh.bpm = track.bpm;
+  editing = song.add(fresh);
+  track = fresh;
+  session.loadSegment(fresh);
+  stage.mount(fresh);
+  flash(`section ${song.order.length} — play it`);
+  refresh();
+}
+
+const playingWholeSong = () => song.order.length > 1 && session.state === 'done';
+let track = song.segments[editing];
 const clock = new Clock(ctx, { bpm: track.bpm, swing: palette.swing });
 const session = new Session(track);
 if (incoming) session.openEverything();
@@ -222,32 +265,45 @@ clock.onSchedule((from, to, timeOf) => {
       voices.playClick(timeOf(step), { accent: step % STEPS_PER_BAR === 0 });
     }
 
-    for (const round of track.rounds) {
-      // Only rounds she has KEPT play back. The one in her hands is heard live.
-      if (!track.accepted.has(round.id) && round.id !== session.round.id) continue;
+    // WHICH SEGMENT IS SOUNDING. While she is building, the answer is always
+    // the one in her hands, looping — that is the loop pedal and it must not
+    // change. Once the whole song is finished, playback walks the order, which
+    // is the only moment a drop can actually happen (req:learn-song-structure).
+    const live = playingWholeSong()
+      ? song.at(step)
+      : { segment: track, localStep: step };
+    if (!live) continue;
+    const seg = live.segment;
+    const local = live.localStep;
+    const isEditing = seg === track;
+
+    for (const round of seg.rounds) {
+      // Only rounds she has KEPT play back. The one in her hands is heard live,
+      // and only in the segment she is actually holding.
+      if (!seg.accepted.has(round.id) && !(isEditing && round.id === session.round.id)) continue;
       // A silenced round stops looping. Her LIVE taps are unaffected — they go
       // out through onHit and never come near this — so she can mute a layer
       // and still play it, which is how you find out what it was doing.
-      if (track.isMuted(round.id)) continue;
+      if (seg.isMuted(round.id)) continue;
 
       // Each round wraps at its OWN length, which is the whole of polymeter:
       // a three-bar bass under a four-bar drum part drifts and comes back
       // together every twelve bars (dec:layers-of-different-lengths).
-      const loop = track.loopStepsFor(round.id);
-      const slot = ((step % loop) + loop) % loop;
+      const loop = seg.loopStepsFor(round.id);
+      const slot = ((local % loop) + loop) % loop;
 
-      for (const lane of track.lanesAt(round.id, slot)) {
+      for (const lane of seg.lanesAt(round.id, slot)) {
         // A held block sounds once, where it begins, and rings for its length.
-        if (!track.isRunStart(round.id, lane, slot)) continue;
+        if (!seg.isRunStart(round.id, lane, slot)) continue;
         const key = `${round.id}:${lane}:${step}`;
         if (alreadySounded.delete(key)) continue;
         const { voice, degree } = voiceFor(round, lane);
-        const gain = round.id === session.round.id ? 1 : 0.8;
+        const gain = isEditing && round.id === session.round.id ? 1 : 0.8;
         // Sound it for as long as she held it. A drum ignores this and keeps
         // its own length; a pitched note takes the nearest rendered one.
-        const steps = track.runLengthAt(round.id, lane, slot);
+        const steps = seg.runLengthAt(round.id, lane, slot);
         voices.play(voice, {
-          degree, time: timeOf(step), gain, chord: track.chordAt(step),
+          degree, time: timeOf(step), gain, chord: seg.chordAt(local),
           seconds: steps * clock.stepSeconds,
         });
       }
@@ -403,6 +459,19 @@ function refresh() {
 
   const strip = el('rounds');
   strip.innerHTML = '';
+  const sectionChip = () => {
+    // ONE MORE CHIP ON THE ROW SHE ALREADY ARRANGES WITH, and only once the
+    // segment in her hands is finished — before that there is nothing to add a
+    // section to. The chips are where dec:arrangement-breathes put arranging,
+    // so this is the row it belongs on rather than a new control.
+    if (session.state !== 'done') return;
+    const b = document.createElement('button');
+    b.className = 'chip section';
+    b.textContent = song.order.length > 1 ? `+ ${song.order.length + 1}` : '+ section';
+    b.title = 'add a section — a new part of the song';
+    b.addEventListener('click', (e) => { e.stopPropagation(); addSection(); });
+    strip.appendChild(b);
+  };
   track.rounds.forEach((r, i) => {
     const b = document.createElement('button');
     b.className = 'chip';
@@ -428,6 +497,7 @@ function refresh() {
     });
     strip.appendChild(b);
   });
+  sectionChip();
 
   stage.setRound(session.round);
   stage.setArmed(session.recording);

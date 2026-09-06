@@ -407,5 +407,29 @@ console.log('\na layer she leaves out on purpose');
   }
 }
 
+console.log('\nmoving to another section of the song');
+
+{
+  // dec:a-segment-is-a-whole-track. The session swaps what it is HOLDING rather
+  // than being replaced, because the composition root registers one nudge
+  // handler on it at startup.
+  const { PHONK } = await import('../js/palettes.js');
+  const a = new Track({ bars: 4, palette: PHONK });
+  const b = new Track({ bars: 4, palette: PHONK });
+  const s = new Session(a);
+  tapOut(s, 96);
+  const bpm = s.bpm;
+
+  a.record('r1', 0, 0); a.accept('r1');
+  s.goTo(0);
+  s.loadSegment(b);
+
+  check('it is holding the new segment', s.track === b);
+  check('and starts at its first round', s.roundIndex === 0);
+  check('the tempo survives, because it belongs to the song', s.bpm === bpm);
+  check('the first segment is untouched', a.count('r1') === 1 && a.accepted.has('r1'));
+  check('and the new one is genuinely empty', b.count('r1') === 0 && b.accepted.size === 0);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);
