@@ -16,7 +16,7 @@
 (function () {
   var h = location.hash.replace(/^#/, '');
   if (!h) return;
-  var homes = {"0":"beats/","1":"ethereal/","2":"haunted/","3":"reggaeton/","4":"bachata/"};
+  var homes = {"0":"beats/","1":"ethereal/","2":"haunted/","3":"reggaeton/","4":"bachata/","5":"ritual/"};
   var id = 0;
   try {
     var s = h.replace(/-/g, '+').replace(/_/g, '/');
@@ -103,6 +103,11 @@
       <a class="card" href="bachata/" style="--accent:#5ee6a8">
         <h2>JugBachata</h2>
         <p>Requinto, güira and bongó. The guitar leads.</p>
+        <span class="go">open ▸</span>
+      </a>
+      <a class="card" href="ritual/" style="--accent:#c8a86b">
+        <h2>JugRitual</h2>
+        <p>Felt piano and a choir, then a drop-tuned riff over the top.</p>
         <span class="go">open ▸</span>
       </a>
   </main>

@@ -24,6 +24,10 @@ import {
 import {
   renderString, renderBongo, renderGuira, BACHATA as BACHATA_FEEL,
 } from './bachata.js';
+import {
+  renderFeltPiano, renderChoir, renderRiff, renderRitualKick, renderRitualSnare,
+  renderRitualGhost, renderRitualHat, RITUAL as RITUAL_FEEL,
+} from './ritual.js';
 
 /** Where the lead sits relative to the bass — two octaves up, out of its way. */
 const LEAD_OCTAVES = 2;
@@ -456,8 +460,170 @@ export const BACHATA = {
 };
 
 // ---------------------------------------------------------------------------
+// Ritual — quiet, then crushing, in a very large room. Id 5 forever.
+// ---------------------------------------------------------------------------
 
-export const PALETTES = [PHONK, CALM, HAUNTED, REGGAETON, BACHATA];
+export const RITUAL = {
+  id: 5,
+  key: 'ritual',
+  blurb: 'Felt piano and a choir, then a drop-tuned riff over the top.',
+  accent: '#c8a86b',
+  home: 'ritual/',
+  name: 'JugRitual',
+  tagline: 'Turn your phone sideways, tap the blocks, and let it get heavy.',
+
+  bpm: RITUAL_FEEL.bpm,     // 72 — the median of the corpus's measured slow half
+  swing: RITUAL_FEEL.swing, // 0 — the hats that define this are straight 16ths
+  room: RITUAL_FEEL.room,   // very large; the room is the loudest thing here
+
+  /**
+   * MINOR PENTATONIC, AND THE CORPUS ARGUED FOR SOMETHING ELSE.
+   *
+   * Read on 2026-09-06 (chg:corpus-numbers-measured), the twenty MIDI files put
+   * 82% of their notes inside the natural minor and only 68% inside the minor
+   * pentatonic. On the evidence this palette should be natural minor, and that
+   * is what the measurement was for.
+   *
+   * IT CANNOT BE, AND THE REASON IS THE PROMISE RATHER THAN A PREFERENCE. No
+   * palette may put two reachable notes a semitone apart — that is the grinding
+   * a player hears as a mistake, it is the half of the scale lock that makes
+   * "you cannot play a wrong note" true, and test/scale.mjs enforces it on every
+   * palette. Natural minor has exactly two such pairs, the 2nd against the ♭3
+   * and the 5th against the ♭6.
+   *
+   * AND THOSE ARE PRECISELY THE TWO NOTES IT ADDS. Minor pentatonic is natural
+   * minor with the 2nd and the ♭6 removed; putting either back creates a
+   * semitone. So there is no six-note middle ground here — the missing 32% is
+   * unreachable by construction, not by choice.
+   *
+   * WHICH MAKES THIS THE FIRST REAL CASE FOR cap:choose-key-and-scale. The
+   * adult version's rule is that a guard rail becomes adjustable rather than
+   * disappearing (req:guard-rails-are-adjustable): the default stays pentatonic
+   * and safe, and a player who wants the other 32% chooses natural minor
+   * deliberately and accepts what comes with it. The haunted palette gave up the
+   * REASSURING half of the promise on purpose; this is the protective half, and
+   * it is not the palette's to give up on the player's behalf.
+   */
+  scale: MINOR_PENTATONIC,
+  scaleName: 'minor pentatonic',
+
+  /**
+   * NO PROGRESSION, AND IT IS NOT AN OVERSIGHT EITHER.
+   *
+   * This idiom is chord-loop music and the palette should move. It does not,
+   * for the same reason bachata took its automatic version back out
+   * (dec:idea-drop-the-auto-progression): a progression that transposes notes
+   * already recorded is the thing that felt wrong in play. Bachata earned its
+   * chords back by having a player who chooses them; that mechanism
+   * (dec:idea-manual-chords-with-a-pause) is what would finish this palette too,
+   * and it is not built.
+   *
+   * So this is the right timbre, the right tempo and a harmony that stays home.
+   */
+
+  /**
+   * FOUR ROUNDS, WHICH IS ALL THERE ARE — track.js throws at any other number.
+   * The arc is the requirement's: piano, then voices, then the kit, and the
+   * weight last (req:sleep-token-palette).
+   *
+   * WHAT DID NOT FIT, said plainly rather than left to be discovered: the
+   * hi-hat's OPEN and PEDAL articulations. req:drums-in-the-gospel-idiom names
+   * all three by name and the corpus uses all three — in the Summoning drum solo
+   * they are near-balanced at 30 closed, 27 pedalled, 29 open. Four rounds of two
+   * thumbs cannot hold them alongside a kick, a snare and a ghost, and the ghost
+   * won because that requirement calls it the most identifying feature of the
+   * idiom.
+   */
+  rounds: [
+    {
+      id: 'r1', label: 'Keys', full: 'The Felt Piano', sustains: true, click: true,
+      lanes: [
+        { voice: 'piano', degree: 0, name: 'ROOT' },
+        { voice: 'piano', degree: 1, name: '♭3' },
+        { voice: 'piano', degree: 3, name: '5th' },
+        { voice: 'piano', degree: 5, name: '8ve' },
+      ],
+    },
+    {
+      id: 'r2', label: 'Choir', full: 'The Choir', sustains: true, click: false,
+      lanes: [
+        { voice: 'choir', degree: 0, name: 'ROOT' },
+        { voice: 'choir', degree: 1, name: '♭3' },
+        { voice: 'choir', degree: 3, name: '5th' },
+        { voice: 'choir', degree: 4, name: '♭7' },
+      ],
+    },
+    /**
+     * FOUR DRUMS UNDER TWO THUMBS, which the phonk layout rejected — and the
+     * rejection does not reach here.
+     *
+     * The loop-pedal rewrite replaced four drum keys with two, on the grounds
+     * that four drums are four INSTRUMENTS to choose between while four notes
+     * are four positions on ONE instrument. That reasoning stands, and
+     * con:playable-by-four-limbs is what changes its answer: a kit is one
+     * instrument, played by one person with four limbs. Four drum lanes are four
+     * positions on it, exactly as four degrees are four positions on a piano.
+     *
+     * The original objection was also grounded in req:player-is-nine — four
+     * decisions at once is too many for her — and that requirement governs
+     * MusicJug, not proj:adult-version, which this palette belongs to.
+     *
+     * ⚠️ SNARE + GHOST + HAT NEEDS THREE HANDS, and snare + ghost is incoherent
+     * anyway: one drum cannot be struck loudly and softly at the same instant.
+     * ver:drums-are-playable is the check that should catch it and this is its
+     * first real input. Left standing rather than designed away — narrowing the
+     * lanes to make a planned check pass would be answering the check instead of
+     * the music.
+     */
+    {
+      id: 'r3', label: 'Kit', full: 'Kick, Snare & Hat', sustains: false, click: false,
+      lanes: [
+        { voice: 'kick', name: 'KICK' },
+        { voice: 'snare', name: 'SNARE' },
+        { voice: 'ghost', name: 'GHOST' },
+        { voice: 'hat', name: 'HAT' },
+      ],
+    },
+    {
+      id: 'r4', label: 'Riff', full: 'The Riff', sustains: false, click: false,
+      lanes: [
+        { voice: 'riff', degree: 0, name: 'ROOT' },
+        { voice: 'riff', degree: 2, name: '4th' },
+        { voice: 'riff', degree: 3, name: '5th' },
+        { voice: 'riff', degree: 4, name: '♭7' },
+      ],
+    },
+  ],
+
+  kit: null,
+  /**
+   * SAMPLE RATE IS NOT UNIFORM HERE, unlike every palette before it, and the
+   * riff is why. Halving the rate puts Nyquist at 11 kHz, which is transparent
+   * for a felt piano and a choir — both are dark by construction, the choir's
+   * top formant sits at 3.4 kHz. It is NOT transparent for distortion, whose
+   * whole job is to manufacture harmonics far above the fundamental: rendered
+   * at half rate those fold back as aliasing, which sounds like cheap digital
+   * clipping and is exactly the artefact renderRiff's cabinet stage exists to
+   * avoid. The drums are broadband noise and want full rate for the same reason.
+   */
+  pitched: {
+    piano: { render: (sr, hz, s, o) => renderFeltPiano(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.003 },
+    choir: { render: (sr, hz, s, o) => renderChoir(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.9 },
+    riff: { render: (sr, hz, s, o) => renderRiff(sr, hz, s, o), octaves: 0, attack: 0.002 },
+    kick: { render: (sr) => renderRitualKick(sr), octaves: 0, attack: 0.002 },
+    snare: { render: (sr) => renderRitualSnare(sr), octaves: 0, attack: 0.002 },
+    ghost: { render: (sr) => renderRitualGhost(sr), octaves: 0, attack: 0.002 },
+    hat: { render: (sr) => renderRitualHat(sr), octaves: 0, attack: 0.001 },
+  },
+  // A held choir on the root, voiced up two octaves so a phone can reproduce it
+  // (dec:drone-voiced-up). Round one is a piano played into a held chord.
+  drone: (sr) => renderChoir(sr, ROOT_HZ * 4, {}, { seconds: 8 }),
+  impulse: (sr) => impulseResponse(sr, { seconds: 5.0, ...RITUAL_FEEL.room }),
+};
+
+// ---------------------------------------------------------------------------
+
+export const PALETTES = [PHONK, CALM, HAUNTED, REGGAETON, BACHATA, RITUAL];
 
 /** By permanent id, for the link. Unknown ids fall back to phonk rather than
  *  failing — a link from a future build should degrade, never break. */

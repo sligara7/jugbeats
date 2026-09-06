@@ -56,6 +56,16 @@ const PAGES = [
     hint: 'the requinto is the one that leads — try the last round first',
   },
   {
+    dir: 'ritual',
+    palette: 'ritual',
+    title: 'JugRitual — let it get heavy',
+    ogTitle: 'JugRitual',
+    ogDescription:
+      'Turn your phone sideways, tap the blocks, and let it get heavy. Then send it back.',
+    h1: 'JugRitual',
+    hint: 'start with the piano — the riff is the last round, and it is loud',
+  },
+  {
     dir: 'reggaeton',
     palette: 'reggaeton',
     title: 'JugDembow — you cannot miss the beat',
