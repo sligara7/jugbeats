@@ -194,35 +194,117 @@ export function renderChoir(sr, hz, s, { seconds } = {}) {
  *    and a waveshaper.
  */
 const RIFF_STRING = {
-  damp: 0.38, decay: 0.9871, pick: 0.09, tone: 0.44,
-  body: 0.05, dur: [0.42, 1.5], peak: 0.95, seed: 0x8b22,
+  // Brighter and drier than the first attempt. Active pickups (Fishman Fluence
+  // on the real thing) are high-output and low-noise with very little of the
+  // guitar's own box in the signal, so `body` is near zero and `damp` is up:
+  // what reaches the amp is the string, not the room around it. `pick` stays
+  // near the bridge, which is where a chug is played.
+  damp: 0.47, decay: 0.9869, pick: 0.085, tone: 0.52,
+  body: 0.02, dur: [0.40, 1.4], peak: 0.95, seed: 0x8b22,
 };
 
 export function renderRiff(sr, hz, s, { seconds } = {}) {
   const c = shape(s);
   const dur = seconds ?? lin(c.longer, RIFF_STRING.dur[0], RIFF_STRING.dur[1]);
   const raw = pluck(sr, hz, RIFF_STRING, s, { seconds: dur });
-
-  const drive = lin(c.dirtier, 7, 30);
   const out = alloc(sr, dur);
 
-  const hiA = onePole(exp(clamp01(c.deeper), 5600, 3600), sr);
-  const loA = onePole(88, sr);
-  let hi = 0, lo = 0;
+  // ── the screamer ────────────────────────────────────────────────────────
+  // Highpass BEFORE the gain, which is the whole trick and the thing the first
+  // version of this function got backwards. A drop-tuned fundamental pushed
+  // into a clipper intermodulates with everything above it and the result is
+  // mud; take the bottom out first and the SAME clipper produces an articulate
+  // chug. That is what a Tube Screamer in front of an amp is for, and it is why
+  // these records stay legible at this tuning.
+  const tsHpA = onePole(230, sr);
+  const tsMidA = onePole(760, sr);
+  const tsBoost = lin(c.punchier, 2.2, 5.0);
+  let tsHp = 0, tsMid = 0;
+
+  // ── the amp ─────────────────────────────────────────────────────────────
+  // Asymmetric: a symmetric curve makes only odd harmonics and reads as a fuzz
+  // pedal, and letting the halves clip differently adds the even ones that read
+  // as a valve amp being pushed.
+  const drive = lin(c.dirtier, 9, 34);
+
+  // ── the cabinet ─────────────────────────────────────────────────────────
+  // A speaker in a box is a fierce bandpass, and skipping it is why amateur
+  // distortion sounds like clipping. Two poles on the top rather than one,
+  // because a single pole leaves fizz a real cone cannot produce; a presence
+  // bump where a Mesa lives; and a cut at 250Hz, which is the boxiness these
+  // productions carve out — NOT a mid scoop, which would take the riff's
+  // articulation with it.
+  const cabA = onePole(exp(clamp01(c.deeper), 6400, 4700), sr);
+  const cabB = onePole(exp(clamp01(c.deeper), 6400, 4700), sr);
+  const lowA = onePole(94, sr);
+  const boxA = onePole(250, sr);
+  const boxB = onePole(430, sr);
+  const presA = onePole(2100, sr);
+  const presB = onePole(4200, sr);
+  let cab1 = 0, cab2 = 0, low = 0, box1 = 0, box2 = 0, pres1 = 0, pres2 = 0;
+
+  // ── the sub ─────────────────────────────────────────────────────────────
+  // SYNTHESIZED, NOT FILTERED OFF THE STRING, and that correction came from a
+  // measurement: only 4.5% of this string's energy survives a 118Hz lowpass.
+  // Plucked near the bridge a Karplus-Strong string has almost no fundamental,
+  // so the first version of this "clean sub" was routing something that was not
+  // there.
+  //
+  // Generating it is what these productions actually do — the guitar is layered
+  // with a synth sub so the guitar carries the clack and the sub carries the
+  // weight, and neither has to do both. It is the same split as running a bass
+  // through a sub amp and a dirty top amp at once.
+  //
+  // LIGHTLY SATURATED ON PURPOSE. A pure sine at 65Hz is inaudible on a phone.
+  // Bending it gives harmonics the ear reconstructs the fundamental from, which
+  // is the missing-fundamental trick dec:idea-the-drop and dec:drone-voiced-up
+  // both already rely on: the weight is FELT where it cannot be heard.
+  const subDecay = Math.exp(-1 / (sr * dur * 0.42));
+  let subPh = 0, subEnv = 0;
 
   for (let i = 0; i < raw.length && i < out.length; i++) {
-    // The amp. tanh on the way up, a softer knee on the way down, so the two
-    // halves of the wave are not clipped identically.
-    const v = raw[i] * drive;
-    let x = v >= 0 ? Math.tanh(v) : Math.tanh(v * 0.72) * 0.86;
+    const x = raw[i];
 
-    // The cabinet: lowpass to kill the fizz, then remove what is below the
-    // speaker, which is what stops a drop-tuned riff swallowing the kick.
-    hi += hiA * (x - hi);
-    lo += loA * (hi - lo);
-    out[i] = hi - lo * 0.82;
+    // Screamer: highpass, then a hump around 760Hz, then a soft first clip.
+    tsHp += tsHpA * (x - tsHp);
+    const hp = x - tsHp;
+    tsMid += tsMidA * (hp - tsMid);
+    const boosted = (hp + tsMid * 0.9) * tsBoost;
+    const stage1 = Math.tanh(boosted);
+
+    // Amp, asymmetric.
+    const v = stage1 * drive;
+    let a = v >= 0 ? Math.tanh(v) : Math.tanh(v * 0.74) * 0.88;
+
+    // Cabinet: two-pole top, low cut, presence bump, boxiness cut.
+    cab1 += cabA * (a - cab1);
+    cab2 += cabB * (cab1 - cab2);
+    low += lowA * (cab2 - low);
+    let y = cab2 - low;
+
+    box1 += boxA * (y - box1);
+    box2 += boxB * (y - box2);
+    // A bandpass from two lowpasses is lp(HIGHER) - lp(lower); written the other
+    // way round it changes sign and the dip becomes a boost. Measured that
+    // mistake here first: raising the coefficient made 250-800Hz grow.
+    y -= (box2 - box1) * 0.85;                 // dip around 250-430Hz
+
+    pres1 += presA * (y - pres1);
+    pres2 += presB * (y - pres2);
+    y += (pres2 - pres1) * 0.85;               // bump around 2-4kHz
+
+    // The sub: a sine at the fundamental, following the note rather than the
+    // string. Its attack is a couple of milliseconds so it arrives WITH the
+    // pick rather than swelling in behind it.
+    subPh += (2 * Math.PI * hz) / sr;
+    const target = i < sr * 0.002 ? i / (sr * 0.002) : 1;
+    subEnv = subEnv * subDecay + (1 - subDecay) * 0;
+    if (i === 0) subEnv = 1;
+    const sub = Math.tanh(Math.sin(subPh) * 1.9) * 0.72 * subEnv * target;
+
+    out[i] = y * 0.86 + sub * 0.62;
   }
-  return normalize(fadeOut(out, sr, 20), 0.82);
+  return normalize(fadeOut(out, sr, 20), 0.86);
 }
 
 // ---------------------------------------------------------------------------

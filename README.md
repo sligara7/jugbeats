@@ -109,10 +109,12 @@ node test/scale.mjs           # no two notes she can reach can clash
 node test/midi.mjs            # her track leaves as a file a DAW will read
 node test/palette.mjs         # styles do not cross wires
 node test/panel.mjs           # the help panel can always be left
+node test/voices.mjs          # no voice renders a NaN, at any rate
 
 node forge/calm.mjs calm.wav      # hear the ethereal palette without the game
 node forge/haunted.mjs haunt.wav  # hear the haunted one
 node forge/bachata.mjs bach.wav   # and the bachata one
+node forge/ritual.mjs ritual.wav  # and Ritual, which arranges a drop the game cannot yet play
 node forge/pages.mjs              # regenerate the per-palette pages
 
 python3 -m http.server 8137   # then open http://localhost:8137
