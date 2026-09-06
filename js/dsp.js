@@ -72,8 +72,25 @@ function svf() {
   return { lp: 0, bp: 0 };
 }
 function svfStep(s, x, cutoffHz, q, sr) {
-  const f = 2 * Math.sin((Math.PI * Math.min(cutoffHz, sr * 0.45)) / sr);
   const damp = 1 / Math.max(q, 0.5);
+  // STABILITY IS NOT A NYQUIST QUESTION, and clamping to Nyquist alone is the
+  // bug this line replaces. The Chamberlin loop diverges unless f < 2 - damp,
+  // which couples the cutoff to the Q: a cutoff that is perfectly safe at high
+  // resonance blows up at low resonance, and the bound TIGHTENS as the sample
+  // rate falls — so a voice can be clean at 48k and diverge in the kit, which
+  // is baked at 22050.
+  //
+  // When it diverged it did so SILENTLY: the state ran away to Infinity, the
+  // samples became NaN, and forge/wav.mjs wrote them out as zeroes, so a broken
+  // drum was indistinguishable from a short one. kit/openhat.wav was 93%
+  // digital silence from the first commit of this project and nothing noticed.
+  // test/voices.mjs is the check that would have.
+  //
+  // The clamp is a floor under the damage, not a licence: it only engages on a
+  // configuration that would otherwise produce NaN, so every caller that was
+  // already stable is bit-for-bit unchanged.
+  const limit = Math.max(0.02, 2 - damp) * 0.96;
+  const f = Math.min(2 * Math.sin((Math.PI * Math.min(cutoffHz, sr * 0.45)) / sr), limit);
   const hp = x - s.lp - damp * s.bp;
   s.bp += f * hp;
   s.lp += f * s.bp;
