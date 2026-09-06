@@ -564,6 +564,29 @@ export class Track {
     if (this.count(roundId) > 0) this.accepted.add(roundId);
   }
 
+  /**
+   * Keep a round she deliberately left empty (req:a-layer-can-be-left-out).
+   *
+   * A SEPARATE DOOR RATHER THAN A FLAG ON `accept`, because the guard on accept
+   * is load-bearing everywhere else: an empty round arriving there is a mistake
+   * in every other caller, and loosening it would let one through silently. A
+   * skip is not a lenient accept, it is a different act — she is saying this
+   * layer is finished BECAUSE it is empty.
+   *
+   * The distinction survives sharing for free. The link stores which rounds are
+   * accepted as a bitmask independent of how many notes each holds
+   * (iface:track-format), so a skipped layer travels as itself and needs no new
+   * format version.
+   */
+  skip(roundId) {
+    if (this.count(roundId) === 0) this.accepted.add(roundId);
+  }
+
+  /** Kept, and kept empty — a layer she chose to leave out. */
+  isSkipped(roundId) {
+    return this.accepted.has(roundId) && this.count(roundId) === 0;
+  }
+
   isMuted(roundId) {
     return this.muted.has(roundId);
   }

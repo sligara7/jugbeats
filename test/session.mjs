@@ -339,5 +339,73 @@ console.log('\ntempo, once set, stays set');
   check('but clearing does', s.tempoIsSet === false);
 }
 
+console.log('\na layer she leaves out on purpose');
+
+{
+  // req:a-layer-can-be-left-out. Not every track wants every instrument, and
+  // the refusal this replaces was protecting a real accident — so the test that
+  // matters most is that ONE press still does nothing.
+  const { PHONK } = await import('../js/palettes.js');
+  const { encode, decode } = await import('../js/link.js');
+
+  const mk = () => {
+    const t = new Track({ bars: 4, palette: PHONK });
+    const s = new Session(t);
+    tapOut(s, 120);
+    return [t, s];
+  };
+  /** Count in and land in `recording`, the way the clock does it. */
+  const rolling = (s) => { s.begin(0); s.tick(999); };
+
+  {
+    const [t, s] = mk();
+    rolling(s);
+    check('one press on an empty round keeps her there', s.stop() === false);
+    check('and nothing is kept', t.accepted.has('r1') === false);
+    check('and she has not advanced', s.roundIndex === 0);
+
+    check('the second press skips it', s.stop() === true);
+    check('the round is kept, and empty', t.isSkipped('r1') === true,
+      `accepted=${t.accepted.has('r1')} count=${t.count('r1')}`);
+    check('and she is on the next round', s.roundIndex === 1);
+  }
+
+  {
+    // THE ARM MUST NOT SURVIVE ANYTHING ELSE, or a stray press earlier in the
+    // session cashes in much later and skips a round she meant to play.
+    const [t, s] = mk();
+    rolling(s);
+    s.stop();                       // arms
+    s.reset();                      // ...and this must disarm it
+    rolling(s);
+    check('a press before a reset does not still count', s.stop() === false);
+    check('so the round is still hers to play', t.accepted.has('r1') === false);
+  }
+
+  {
+    // A skipped layer has to reach the person she sends it to, or the
+    // arrangement changes in the post.
+    const t = new Track({ bars: 4, palette: PHONK });
+    t.record('r1', 0, 0); t.accept('r1');
+    t.skip('r2');
+    t.record('r3', 0, 4); t.accept('r3');
+    const back = decode(encode(t), PHONK);
+    check('a skipped layer survives the link', back.isSkipped('r2') === true,
+      `accepted=${[...back.accepted].join(',')}`);
+    check('and the layers around it are unchanged',
+      back.count('r1') === 1 && back.count('r3') === 1);
+  }
+
+  {
+    // Nothing may be reachable that was not reachable before, EXCEPT past a
+    // round she deliberately finished.
+    const t = new Track({ bars: 4, palette: PHONK });
+    const s = new Session(t);
+    t.skip('r1');
+    check('a skipped round counts as done, so the next one opens',
+      s.furthestReachable() >= 1);
+  }
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

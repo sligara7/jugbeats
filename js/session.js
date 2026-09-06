@@ -167,6 +167,7 @@ export class Session {
   /** START — begin the count-in for the current round. */
   begin(atStep) {
     if (this.state === 'recording') return false;
+    this._skipArmed = null;
     this.state = 'counting';
     this.countInEndsAtStep = atStep;
     this._emit({ kind: 'counting-in', roundId: this.round.id });
@@ -191,14 +192,42 @@ export class Session {
   stop() {
     if (this.state !== 'recording') return false;
     const id = this.round.id;
+
     if (this.track.count(id) === 0) {
-      this._emit({ kind: 'nothing-to-keep' });
-      return false;
+      // TWICE, AND THE SECOND PRESS IS THE WHOLE DESIGN
+      // (req:a-layer-can-be-left-out). Leaving a layer out has to be possible —
+      // not every track wants every instrument — but the refusal this replaces
+      // was protecting something real: pressing stop on an empty round almost
+      // always means she pressed the wrong thing, and advancing her past a
+      // round she never played is worse than the inconvenience of not being
+      // able to skip.
+      //
+      // Two presses keeps both. One stray tap still does nothing at all, which
+      // is exactly what it did before; a second, deliberate one says she meant
+      // it. It costs no new control on a screen that has been improved twice by
+      // taking controls away, and the prompt was already being emitted.
+      if (this._skipArmed !== id) {
+        this._skipArmed = id;
+        this._emit({ kind: 'nothing-to-keep', roundId: id });
+        return false;
+      }
+      this._skipArmed = null;
+      this.track.skip(id);
+      this._emit({ kind: 'round-skipped', roundId: id, index: this.roundIndex });
+      this._advance();
+      return true;
     }
 
+    this._skipArmed = null;
     this.track.accept(id);
     this._emit({ kind: 'round-kept', roundId: id, index: this.roundIndex });
+    this._advance();
+    return true;
+  }
 
+  /** Move to the next round, or finish. Shared by keeping and skipping, so a
+   *  skipped layer reaches the rest of the track exactly as a kept one does. */
+  _advance() {
     if (this.roundIndex + 1 < this.track.rounds.length) {
       this.roundIndex++;
       this.state = 'tempo'; // idle, waiting for START — the tempo is already set
@@ -207,7 +236,6 @@ export class Session {
       this.state = 'done';
       this._emit({ kind: 'all-done' });
     }
-    return true;
   }
 
   /**
@@ -219,6 +247,7 @@ export class Session {
    * stays recorded; she simply is not recording any more.
    */
   halt() {
+    this._skipArmed = null;
     this.state = 'tempo';
     this._emit({ kind: 'halted' });
     return true;
@@ -226,6 +255,7 @@ export class Session {
 
   /** RESET — throw this round away and go again. Never touches earlier rounds. */
   reset() {
+    this._skipArmed = null;
     const id = this.round.id;
     this.track.clear(id);
     this.state = 'tempo';
@@ -236,6 +266,7 @@ export class Session {
   /** Jump back to a round she has already done, to play it again. */
   goTo(index) {
     if (index < 0 || index > this.furthestReachable()) return false;
+    this._skipArmed = null;
     this.roundIndex = index;
     this.state = 'tempo';
     this._emit({ kind: 'round-changed', roundId: this.round.id, index });

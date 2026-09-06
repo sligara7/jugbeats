@@ -690,7 +690,8 @@ session.onNudge((n) => {
     case 'round-reset': flash('cleared — go again'); break;
     case 'tempo-cleared': flash('tap the keys four times for a new speed'); break;
     case 'round-changed': flash(`back on the ${session.round.full.toLowerCase()} — nothing is kept until you press start`); break;
-    case 'nothing-to-keep': flash('play something first'); break;
+    case 'nothing-to-keep': flash('nothing here — press stop again to skip this one'); break;
+    case 'round-skipped': flash('left it out'); break;
     case 'all-done': flash('you made a whole track'); break;
     default: break;
   }
