@@ -209,39 +209,59 @@ export function renderRiff(sr, hz, s, { seconds } = {}) {
   const raw = pluck(sr, hz, RIFF_STRING, s, { seconds: dur });
   const out = alloc(sr, dur);
 
-  // ── the screamer ────────────────────────────────────────────────────────
-  // Highpass BEFORE the gain, which is the whole trick and the thing the first
-  // version of this function got backwards. A drop-tuned fundamental pushed
-  // into a clipper intermodulates with everything above it and the result is
-  // mud; take the bottom out first and the SAME clipper produces an articulate
-  // chug. That is what a Tube Screamer in front of an amp is for, and it is why
-  // these records stay legible at this tuning.
-  const tsHpA = onePole(230, sr);
-  const tsMidA = onePole(760, sr);
-  const tsBoost = lin(c.punchier, 2.2, 5.0);
+  // ── the screamer, and it does NOT distort ────────────────────────────────
+  // A Tube Screamer in front of a high-gain amp is run with the DRIVE AT ZERO
+  // and the level at ten. It is a clean boost with a high-pass and a mid hump,
+  // and the amp does all the clipping. The previous version clipped here too,
+  // which added a thin buzz on top of the amp's saturation instead of feeding
+  // it a tight signal — half of why this read as an alarm rather than a guitar.
+  const tsHpA = onePole(190, sr);
+  const tsMidA = onePole(700, sr);
+  const tsBoost = lin(c.punchier, 3.5, 7.0);
   let tsHp = 0, tsMid = 0;
 
-  // ── the amp ─────────────────────────────────────────────────────────────
-  // Asymmetric: a symmetric curve makes only odd harmonics and reads as a fuzz
-  // pedal, and letting the halves clip differently adds the even ones that read
-  // as a valve amp being pushed.
+  // ── the amp: THREE GAIN STAGES, not one ─────────────────────────────────
+  // This is the other half. A single clipper, however hard it is driven, makes
+  // a sparse and rather fixed set of harmonics — which is exactly what a siren
+  // is. A real high-gain preamp (5150, Revv) cascades three or four stages with
+  // FILTERING BETWEEN THEM, and each stage saturates what the last one made.
+  // The harmonics multiply rather than add, the spectrum fills in, and the
+  // result reads as crushing instead of buzzing. The inter-stage lowpass is not
+  // optional: without it each stage feeds the next its own fizz and the whole
+  // thing turns to hash.
   const drive = lin(c.dirtier, 9, 34);
+  const g1 = 4.0 + drive * 0.24;
+  const g2 = 3.2 + drive * 0.18;
+  const g3 = 2.4 + drive * 0.13;
+  // LOOSE ON PURPOSE. Measured: tightening these to 6.2k and 4.8k cost 0.10 of
+  // spectral flatness and 50 harmonics, because each stage was filtering away
+  // more than the next one could make. They are here to stop fizz compounding,
+  // not to shape the tone.
+  const s1A = onePole(12000, sr);
+  const s2A = onePole(9000, sr);
+  let st1 = 0, st2 = 0;
 
-  // ── the cabinet ─────────────────────────────────────────────────────────
-  // A speaker in a box is a fierce bandpass, and skipping it is why amateur
-  // distortion sounds like clipping. Two poles on the top rather than one,
-  // because a single pole leaves fizz a real cone cannot produce; a presence
-  // bump where a Mesa lives; and a cut at 250Hz, which is the boxiness these
-  // productions carve out — NOT a mid scoop, which would take the riff's
-  // articulation with it.
-  const cabA = onePole(exp(clamp01(c.deeper), 6400, 4700), sr);
-  const cabB = onePole(exp(clamp01(c.deeper), 6400, 4700), sr);
-  const lowA = onePole(94, sr);
+  // ── the cabinet: two microphones on a 4x12 ──────────────────────────────
+  // A Mesa cab with an SM57 and a Royer R-121 blended is the standard pairing,
+  // and it is a standard pairing because the two curves are opposites: the 57
+  // is a bright dynamic with a presence peak around 4-5kHz, the 121 is a dark
+  // ribbon with more body and almost nothing on top. One alone is either harsh
+  // or dull. Blended they make the curve a guitar actually has.
+  //
+  // The top now comes down to ~4kHz rather than ~6.4kHz. That was the other
+  // thing feeding the alarm: everything above about 5kHz in a distorted guitar
+  // is fizz a real speaker cone physically cannot produce.
+  const c57A = onePole(exp(clamp01(c.deeper), 5800, 4300), sr);
+  const c57B = onePole(exp(clamp01(c.deeper), 5800, 4300), sr);
+  const r121A = onePole(2600, sr);
+  const r121B = onePole(2600, sr);
+  const presA = onePole(2400, sr);
+  const presB = onePole(4600, sr);
+  const lowA = onePole(90, sr);
   const boxA = onePole(250, sr);
   const boxB = onePole(430, sr);
-  const presA = onePole(2100, sr);
-  const presB = onePole(4200, sr);
-  let cab1 = 0, cab2 = 0, low = 0, box1 = 0, box2 = 0, pres1 = 0, pres2 = 0;
+  let m57a = 0, m57b = 0, m121a = 0, m121b = 0;
+  let pres1 = 0, pres2 = 0, low = 0, box1 = 0, box2 = 0;
 
   // ── the sub ─────────────────────────────────────────────────────────────
   // SYNTHESIZED, NOT FILTERED OFF THE STRING, and that correction came from a
@@ -265,44 +285,51 @@ export function renderRiff(sr, hz, s, { seconds } = {}) {
   for (let i = 0; i < raw.length && i < out.length; i++) {
     const x = raw[i];
 
-    // Screamer: highpass, then a hump around 760Hz, then a soft first clip.
+    // Screamer: high-pass, mid hump, clean gain. No clipping.
     tsHp += tsHpA * (x - tsHp);
     const hp = x - tsHp;
     tsMid += tsMidA * (hp - tsMid);
-    const boosted = (hp + tsMid * 0.9) * tsBoost;
-    const stage1 = Math.tanh(boosted);
+    const boosted = (hp + tsMid * 0.8) * tsBoost;
 
-    // Amp, asymmetric.
-    const v = stage1 * drive;
-    let a = v >= 0 ? Math.tanh(v) : Math.tanh(v * 0.74) * 0.88;
+    // Three stages, each saturating what the last one made, filtered between.
+    let a = Math.tanh(boosted * g1);
+    st1 += s1A * (a - st1);
+    a = Math.tanh(st1 * g2);
+    st2 += s2A * (a - st2);
+    // The last stage is asymmetric — a symmetric curve makes only odd
+    // harmonics and reads as a fuzz pedal; letting the halves clip differently
+    // adds the even ones that read as a valve being pushed.
+    const v = st2 * g3;
+    a = v >= 0 ? Math.tanh(v) : Math.tanh(v * 0.76) * 0.9;
 
-    // Cabinet: two-pole top, low cut, presence bump, boxiness cut.
-    cab1 += cabA * (a - cab1);
-    cab2 += cabB * (cab1 - cab2);
-    low += lowA * (cab2 - low);
-    let y = cab2 - low;
+    // Two microphones on the cab, blended.
+    m57a += c57A * (a - m57a);
+    m57b += c57B * (m57a - m57b);
+    m121a += r121A * (a - m121a);
+    m121b += r121B * (m121a - m121b);
+    let y = m57b * 0.58 + m121b * 0.62;
 
-    box1 += boxA * (y - box1);
-    box2 += boxB * (y - box2);
+    low += lowA * (y - low);
+    y -= low;                                   // low cut around 90Hz
+
     // A bandpass from two lowpasses is lp(HIGHER) - lp(lower); written the other
     // way round it changes sign and the dip becomes a boost. Measured that
     // mistake here first: raising the coefficient made 250-800Hz grow.
-    y -= (box2 - box1) * 0.85;                 // dip around 250-430Hz
+    box1 += boxA * (y - box1);
+    box2 += boxB * (y - box2);
+    y -= (box2 - box1) * 0.45;                  // dip around 250-430Hz
 
     pres1 += presA * (y - pres1);
     pres2 += presB * (y - pres2);
-    y += (pres2 - pres1) * 0.85;               // bump around 2-4kHz
+    y += (pres2 - pres1) * 0.18;                // a nudge; 2-4k is the alarm band
 
-    // The sub: a sine at the fundamental, following the note rather than the
-    // string. Its attack is a couple of milliseconds so it arrives WITH the
-    // pick rather than swelling in behind it.
     subPh += (2 * Math.PI * hz) / sr;
     const target = i < sr * 0.002 ? i / (sr * 0.002) : 1;
-    subEnv = subEnv * subDecay + (1 - subDecay) * 0;
+    subEnv = subEnv * subDecay;
     if (i === 0) subEnv = 1;
     const sub = Math.tanh(Math.sin(subPh) * 1.9) * 0.72 * subEnv * target;
 
-    out[i] = y * 0.86 + sub * 0.62;
+    out[i] = y * 1.5 + sub * 0.62;
   }
   return normalize(fadeOut(out, sr, 20), 0.86);
 }

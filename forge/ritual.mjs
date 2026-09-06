@@ -40,15 +40,19 @@ const NEUTRAL = { deeper: 0.5, punchier: 0.5, dirtier: 0.5, longer: 0.5 };
 // Dry first; the room goes on at the end over everything at once. In this
 // palette that matters more than in any other — a hall is what makes a quiet
 // piano and a wall of guitar sound like they are in the same building.
-const dry = new Float32Array(Math.ceil(SR * stepSec * STEPS * BARS + SR * 6));
+const LEN = Math.ceil(SR * stepSec * STEPS * BARS + SR * 6);
+// TWO BUSES, so the kick can duck the music without ducking itself.
+const drums = new Float32Array(LEN);
+const music = new Float32Array(LEN);
 
-function place(buf, atSec, gain = 1) {
+function into(bus, buf, atSec, gain = 1) {
   const start = Math.floor(atSec * SR);
   for (let i = 0; i < buf.length; i++) {
     const j = start + i;
-    if (j >= 0 && j < dry.length) dry[j] += buf[i] * gain;
+    if (j >= 0 && j < bus.length) bus[j] += buf[i] * gain;
   }
 }
+const place = (buf, atSec, gain = 1) => into(music, buf, atSec, gain);
 
 const timeOf = (bar, s) => (bar * STEPS + s) * stepSec;   // straight, no swing
 
@@ -145,7 +149,7 @@ const baked = Object.fromEntries(
   Object.entries(DRUM_VOICES).map(([n, f]) => [n, f(SR)]),
 );
 for (const [bar, step, voice, gain] of DRUMS) {
-  place(baked[voice], timeOf(bar, step), gain);
+  into(drums, baked[voice], timeOf(bar, step), gain);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +201,41 @@ const RIFF = [
   [11, 0, 0], [11, 4, 3], [11, 8, 2], [11, 12, 0],
 ];
 for (const [bar, step, degree] of RIFF) {
-  place(renderRiff(SR, hz(degree, 0), NEUTRAL, { seconds: 0.34 }), timeOf(bar, step), 0.5);
+  // OCTAVE -1, matching the palette's own `riff` entry. The register is most of
+  // what makes this idiom sound like itself, so a demo an octave up would be
+  // demonstrating a different instrument.
+  place(renderRiff(SR, hz(degree, -1), NEUTRAL, { seconds: 0.34 }), timeOf(bar, step), 0.5);
 }
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Sidechain: the kick ducks everything else
+// ---------------------------------------------------------------------------
+//
+// Every kick pulls the music down by about 2.5dB for a fraction of a second and
+// lets it back in. It costs no frequencies and it is most of why a programmed
+// kick reads as a physical event rather than as a click on top of a mix — the
+// ear hears the room getting out of the way. Keyed to the kick alone rather
+// than the whole kit, which is what makes it feel like weight rather than pumping.
+const DUCK_DB = 2.5;
+const duckFloor = Math.pow(10, -DUCK_DB / 20);
+const release = Math.exp(-1 / (SR * 0.11));
+const gain = new Float32Array(LEN).fill(1);
+{
+  let g = 1;
+  const kicks = new Set(
+    DRUMS.filter(([, , v]) => v === 'kick').map(([b, s]) => Math.floor(timeOf(b, s) * SR)),
+  );
+  for (let i = 0; i < LEN; i++) {
+    if (kicks.has(i)) g = duckFloor;
+    g = 1 - (1 - g) * release;
+    gain[i] = g;
+  }
+}
+
+const dry = new Float32Array(LEN);
+for (let i = 0; i < LEN; i++) dry[i] = drums[i] + music[i] * gain[i];
 
 const [L, R] = reverb(dry, SR, {
   mix: RITUAL.room.mix, size: RITUAL.room.size, damp: RITUAL.room.damp,
@@ -218,3 +253,4 @@ writeFileSync(path, Buffer.from(encodeWav(out, SR, 2)));
 console.log(`wrote ${path} — ${(L.length / SR).toFixed(1)}s, ${BPM}bpm, straight, ${BARS} bars`);
 console.log(`  bars 1-4 piano alone, 5-8 build, 9-12 the drop`);
 console.log(`  drums: ${shape.onsets} onsets, ${shape.linear}% of them a single note, never more than ${shape.most} at once`);
+console.log(`  riff at octave -1; the kick ducks the music by ${DUCK_DB}dB`);
