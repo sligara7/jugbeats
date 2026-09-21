@@ -27,18 +27,95 @@ const KEYS_BY_COUNT = { 2: ['f', 'j'], 4: ['d', 'f', 'j', 'k'] };
 const LANE_COLOURS = ['#ff3d7f', '#ffb03a', '#3ddbd9', '#b46cff'];
 const BG = '#0d0a14';
 
+/**
+ * WHERE EVERYTHING SITS, as pure geometry.
+ *
+ * Extracted from the Stage so it can be checked without a browser: the arrows
+ * overlapping the keys is a fault that looks fine in every unit test and ruins
+ * the game on a phone, and it HAPPENED — the first version put the strip at the
+ * same y the keys started at, and only a geometry check caught it.
+ *
+ * @param {{w:number, h:number, lanes:number, pitched:boolean}} opts
+ */
+export function layoutFor(opts) {
+    const { w, h, lanes: n, pitched } = opts;
+    const keyH = Math.min(h * 0.34, 190);
+
+    // THE ARROWS SIT ABOVE THE KEYS AND TAKE THEIR ROOM FROM THE HIGHWAY.
+    //
+    // The owner's first instinct was to shrink the keys to make space. These
+    // keys are big because a nine-year-old is holding the phone sideways and
+    // hitting them with two thumbs (dec:four-keys-two-thumbs, req:player-is-nine),
+    // and an arrow carved out of a key she is hammering is where a mis-tap
+    // becomes a note she did not ask for. The highway has height to spare and
+    // nothing in it is a target, so the strip comes out of there instead.
+    const arrowH = pitched ? Math.min(Math.max(h * 0.09, 34), 52) : 0;
+    const hitY = h - keyH - 12 - arrowH;
+
+    // Half the lanes under each thumb, both groups hugging the edges. The middle
+    // stays empty whatever the count, because that is where the transport lives
+    // and where neither thumb rests.
+    const perSide = n / 2;
+    const pad = Math.max(w * 0.025, 12);
+    const gap = Math.max(w * 0.012, 7);
+    const groupW = Math.min(w * (perSide === 1 ? 0.33 : 0.37), perSide === 1 ? 320 : 360);
+    const keyW = (groupW - gap * (perSide - 1)) / perSide;
+
+    const keys = [];
+    for (let i = 0; i < n; i++) {
+      const side = i < perSide ? 0 : 1;
+      const withinSide = i % perSide;
+      const groupX = side === 0 ? pad : w - pad - groupW;
+      keys.push({ x: groupX + withinSide * (keyW + gap), y: hitY + arrowH + 12, w: keyW, h: keyH });
+    }
+    const lanes = keys.map((k) => ({ x: k.x, w: k.w, cx: k.x + k.w / 2 }));
+
+    // Two arrows per thumb, spanning exactly the group they move, so the
+    // relationship between a control and what it controls is a matter of
+    // being directly above it rather than of a label.
+    const arrows = [];
+    if (arrowH) {
+      for (const thumb of [0, 1]) {
+        const group = keys.slice(thumb * perSide, (thumb + 1) * perSide);
+        if (!group.length) continue;
+        const gx = group[0].x;
+        const gw = group[group.length - 1].x + group[group.length - 1].w - gx;
+        const halfW = (gw - gap) / 2;
+        arrows.push({ x: gx, y: hitY + 4, w: halfW, h: arrowH - 8, thumb, dir: -1 });
+        arrows.push({ x: gx + halfW + gap, y: hitY + 4, w: halfW, h: arrowH - 8, thumb, dir: 1 });
+      }
+    }
+    return { keys, lanes, hitY, keyH, arrows };
+}
+
 export class Stage {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {import('./clock.js').Clock} clock
-   * @param {{onHit:(lane:number)=>void, onRelease:(lane:number)=>void}} opts
+   * @param {{onHit:(lane:number)=>void, onRelease:(lane:number)=>void,
+   *          onShift?:(thumb:number, dir:number)=>void,
+   *          shiftFor?:(thumb:number)=>number,
+   *          canShift?:(thumb:number, dir:number)=>boolean}} opts
    */
-  constructor(canvas, clock, { onHit, onRelease }) {
+  constructor(canvas, clock, {
+    onHit,
+    onRelease,
+    onShift = () => {},
+    shiftFor = () => 0,
+    canShift = () => true,
+  }) {
     this.canvas = canvas;
     this.ctx2d = canvas.getContext('2d');
     this.clock = clock;
     this.onHit = onHit;
     this.onRelease = onRelease;
+
+    // The arrows ask the shell three things and decide nothing themselves: move
+    // a thumb, where is it, and may it still go that way. Injected like the two
+    // above rather than reached for, so the stage stays a view.
+    this.onShift = onShift;
+    this.shiftFor = shiftFor;
+    this.canShift = canShift;
 
     this.track = null;
     this.roundId = null;
@@ -98,30 +175,12 @@ export class Stage {
   // -------------------------------------------------------------------------
 
   _layout() {
-    const w = this._w;
-    const h = this._h;
-    const keyH = Math.min(h * 0.34, 190);
-    const hitY = h - keyH - 12;
-
-    // Half the lanes under each thumb, both groups hugging the edges. The middle
-    // stays empty whatever the count, because that is where the transport lives
-    // and where neither thumb rests.
-    const n = this.lanes();
-    const perSide = n / 2;
-    const pad = Math.max(w * 0.025, 12);
-    const gap = Math.max(w * 0.012, 7);
-    const groupW = Math.min(w * (perSide === 1 ? 0.33 : 0.37), perSide === 1 ? 320 : 360);
-    const keyW = (groupW - gap * (perSide - 1)) / perSide;
-
-    const keys = [];
-    for (let i = 0; i < n; i++) {
-      const side = i < perSide ? 0 : 1;
-      const withinSide = i % perSide;
-      const groupX = side === 0 ? pad : w - pad - groupW;
-      keys.push({ x: groupX + withinSide * (keyW + gap), y: hitY + 12, w: keyW, h: keyH });
-    }
-    const lanes = keys.map((k) => ({ x: k.x, w: k.w, cx: k.x + k.w / 2 }));
-    return { keys, lanes, hitY, keyH };
+    return layoutFor({
+      w: this._w,
+      h: this._h,
+      lanes: this.lanes(),
+      pitched: !!this.round?.lanes?.some((l) => l.degree !== undefined),
+    });
   }
 
   /** How many keys this round puts on screen. Two on drums, four when pitched. */
@@ -146,11 +205,22 @@ export class Stage {
       this.onRelease(lane);
     };
 
+    const arrowAt = (clientX, clientY) => {
+      const r = this.canvas.getBoundingClientRect();
+      const x = clientX - r.left;
+      const y = clientY - r.top;
+      const { arrows } = this._layout();
+      return arrows.find((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) ?? null;
+    };
+
     const laneAt = (clientX, clientY) => {
       const r = this.canvas.getBoundingClientRect();
       const x = clientX - r.left;
       const y = clientY - r.top;
-      const { keys } = this._layout();
+      const { keys, arrows } = this._layout();
+      // An arrow is not a key. Without this the generous -28 reach above a key
+      // would swallow the strip sitting directly on top of it.
+      if (arrows.some((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h)) return -1;
       for (let i = 0; i < keys.length; i++) {
         const k = keys[i];
         // Generous vertically: everything below the line belongs to the key
@@ -162,6 +232,12 @@ export class Stage {
 
     this.canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      const arrow = arrowAt(e.clientX, e.clientY);
+      if (arrow) {
+        this.onShift(arrow.thumb, arrow.dir);
+        this._flashArrow = { thumb: arrow.thumb, dir: arrow.dir, at: performance.now() };
+        return;
+      }
       const lane = laneAt(e.clientX, e.clientY);
       if (lane < 0) return;
       this._byPointer.set(e.pointerId, lane);
@@ -251,6 +327,7 @@ export class Stage {
     g.setLineDash([]);
 
     this._drawKeys(g, keys);
+    this._drawArrows(g, this._layout().arrows);
     if (this.countdown !== null) this._drawCountdown(g, hitY);
   };
 
@@ -342,6 +419,52 @@ export class Stage {
     const t = this.clock.timeOf(step);
     if (t === null) return null;
     return hitY - ((t - this.clock.ctx.currentTime) / FALL_SECONDS) * hitY;
+  }
+
+  /**
+   * The arrows, and the number beside them.
+   *
+   * THE SHIFT IS ALWAYS ON SCREEN when it is not zero, because this is otherwise
+   * a MODE — the same key sounding a different note depending on state she
+   * cannot see. dec:idea-octave-arrows named that hazard before any of this was
+   * built: for a nine-year-old it is either "I found the high notes" or "why did
+   * it change", and which one depends entirely on whether the screen says.
+   *
+   * An arrow at the end of its travel is dimmed rather than hidden, so a control
+   * that has stopped working still looks like the control it is.
+   */
+  _drawArrows(g, arrows) {
+    if (!arrows?.length) return;
+    const now = performance.now();
+    for (const a of arrows) {
+      const shift = this.shiftFor?.(a.thumb) ?? 0;
+      const atEnd = this.canShift ? !this.canShift(a.thumb, a.dir) : false;
+      const lit = this._flashArrow
+        && this._flashArrow.thumb === a.thumb
+        && this._flashArrow.dir === a.dir
+        && now - this._flashArrow.at < 180;
+
+      g.globalAlpha = atEnd ? 0.22 : 1;
+      g.fillStyle = lit ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)';
+      roundRect(g, a.x, a.y, a.w, a.h, Math.min(12, a.h / 2));
+      g.fill();
+
+      g.fillStyle = 'rgba(255,255,255,0.72)';
+      g.font = `600 ${Math.round(a.h * 0.5)}px ui-rounded, system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(a.dir < 0 ? '\u25c0' : '\u25b6', a.x + a.w / 2, a.y + a.h / 2 + 1);
+      g.globalAlpha = 1;
+
+      // The number sits once per thumb, on the outer arrow, so it never lands
+      // between the two where it would read as belonging to neither.
+      if (shift && a.dir === (a.thumb === 0 ? -1 : 1)) {
+        g.fillStyle = 'rgba(255,255,255,0.5)';
+        g.font = `600 ${Math.round(a.h * 0.38)}px ui-rounded, system-ui, sans-serif`;
+        g.fillText(shift > 0 ? `+${shift}` : `${shift}`,
+          a.x + a.w / 2, a.y - a.h * 0.32);
+      }
+    }
   }
 
   _drawKeys(g, keys) {

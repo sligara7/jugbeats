@@ -125,6 +125,16 @@ export class Voices {
 
     /** @type {Map<string, AudioBuffer>} baked drums, by voice name */
     this.drums = new Map();
+    /**
+     * DEGREES AN ARROW HAS REACHED that the palette's lanes never name.
+     *
+     * The base set is small and rendered at load; the shift range is not
+     * (see the note under `degrees`). A thumb moving somewhere new adds the
+     * degree here and renders it once, so the cost is paid by the person who
+     * pressed the arrow rather than by everyone who opens a link.
+     */
+    this.extraDegrees = new Set();
+
     /** @type {Map<string, AudioBuffer>} pitched, keyed `${voice}:${degree}` */
     this.pitched = new Map();
 
@@ -305,6 +315,31 @@ export class Voices {
   }
 
   /** Render one set of length indices for every pitched voice. */
+  /** Every degree this instance has been asked for — the palette's, plus any an
+   *  arrow has since reached. */
+  _allDegrees() {
+    return [...new Set([...degrees(this.palette), ...this.extraDegrees])].sort((a, b) => a - b);
+  }
+
+  /**
+   * Make sure a degree can be heard, rendering it if this is the first time a
+   * thumb has reached it. Answers whether anything had to be built.
+   *
+   * THE LONGEST LENGTH FIRST, for the same reason load() does it that way: a
+   * held note always starts from the longest buffer, so that is the one that has
+   * to exist before she can press anything. The rest arrive behind it.
+   *
+   * Synchronous and a few milliseconds, and it happens on an ARROW press rather
+   * than on a key press — so the cost never lands between a thumb and a sound.
+   */
+  ensureDegree(degree) {
+    if (this._allDegrees().includes(degree)) return false;
+    this.extraDegrees.add(degree);
+    this._renderPass(this.priorityLengths());
+    this._fillRemaining();
+    return true;
+  }
+
   _renderPass(lengthIdx) {
     const progression = this.palette.progression ?? [0];
     for (let chord = 0; chord < progression.length; chord++) {
@@ -323,7 +358,7 @@ export class Voices {
         const wanted = this.lengthsFor(name);
         for (const len of lengthIdx) {
           if (!wanted.includes(len)) continue;
-          for (const degree of degrees(this.palette)) {
+          for (const degree of this._allDegrees()) {
             const key = `${name}:${degree}:${chord}:${len}`;
             if (this.pitched.has(key)) continue;
             const hz = degreeToHz(degree, spec.octaves ?? 0, this.palette.scale) * shift;

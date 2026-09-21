@@ -425,7 +425,8 @@ export class Track {
    *
    * A round with no pitched lanes — the drums — cannot shift at all.
    */
-  nudgeShift(roundId, thumb, by = 1) {
+  /** Where a thumb would land if nudged — the clamp, without moving anything. */
+  clampShift(roundId, thumb, by = 1) {
     const round = this.roundById(roundId);
     if (!round) return 0;
     const lanes = round.lanes
@@ -435,12 +436,38 @@ export class Track {
 
     const highest = Math.max(...lanes.map((l) => l.degree));
     const lowest = Math.min(...lanes.map((l) => l.degree));
-    const max = DEGREE_CEIL - highest;
-    const min = DEGREE_FLOOR - lowest;
+    return Math.max(DEGREE_FLOOR - lowest,
+      Math.min(DEGREE_CEIL - highest, this.shiftFor(roundId, thumb) + by));
+  }
 
-    const next = Math.max(min, Math.min(max, this.shiftFor(roundId, thumb) + by));
+  /** Whether that nudge would actually move — what dims an arrow at its end. */
+  canShift(roundId, thumb, by = 1) {
+    return this.clampShift(roundId, thumb, by) !== this.shiftFor(roundId, thumb);
+  }
+
+  nudgeShift(roundId, thumb, by = 1) {
+    if (!this.roundById(roundId)) return 0;
+    const next = this.clampShift(roundId, thumb, by);
     this.shift[roundId][thumb] = next;
     return next;
+  }
+
+  /** What one recorded note was played at. */
+  shiftAt(roundId, lane, slot) {
+    return this.noteShift[roundId]?.get(slot * LANE_STRIDE + lane) ?? 0;
+  }
+
+  /** Every degree a thumb can still reach from here — what the renderer has to
+   *  have built before an arrow is pressed. */
+  reachableDegrees(roundId, thumb) {
+    const round = this.roundById(roundId);
+    if (!round) return [];
+    const out = new Set();
+    round.lanes.forEach((l, i) => {
+      if (l.degree === undefined || this.thumbOf(roundId, i) !== thumb) return;
+      out.add(l.degree + this.shiftFor(roundId, thumb));
+    });
+    return [...out];
   }
 
   /** What a note actually sounds: its lane's degree plus the shift it was

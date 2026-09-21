@@ -253,5 +253,28 @@ console.log('\nwhat is not hers is not in the file');
   check('a round she never kept is not in the file', g.tracks.length === 1, `${g.tracks.length} track(s)`);
 }
 
+console.log('\nthe shift travels into the file');
+
+{
+  const { REGGAETON } = await import('../js/palettes.js');
+  const { Track } = await import('../js/track.js');
+
+  // An export that disagrees with the game about which note she played is the
+  // one thing an export cannot do. r3 lane 3 sits at degree 4; +3 must come out
+  // three scale steps higher, not at the same pitch.
+  const t = new Track({ bars: 4, palette: REGGAETON });
+  t.record('r3', 3, 0);
+  t.nudgeShift('r3', 1, 3);
+  t.record('r3', 3, 16);
+  t.accept('r3');
+
+  const home = degreeToMidi(4, 0, REGGAETON.scale);
+  const up = degreeToMidi(4 + 3, 0, REGGAETON.scale);
+  check('a shifted note exports higher than a home one', up > home, `${home} -> ${up}`);
+  check('and the track remembers which was which',
+    t.shiftAt('r3', 3, 0) === 0 && t.shiftAt('r3', 3, 16) === 3,
+    `${t.shiftAt('r3', 3, 0)} / ${t.shiftAt('r3', 3, 16)}`);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

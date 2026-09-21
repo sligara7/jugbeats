@@ -172,9 +172,13 @@ function notesOf(track, round, totalSteps) {
       const length = track.runLengthAt(round.id, lane, slot);
       if (length === 0) continue;
 
+      // THE SHIFT SHE PLAYED IT AT COMES WITH IT. Without this the exported
+      // file would disagree with the game about which note she played, which is
+      // the one thing an export is for (ver:midi-file-is-well-formed).
       const note = spec.notes
         ? spec.notes[lane]
-        : degreeToMidi(round.lanes[lane].degree ?? 0, spec.octaves, track.scale);
+        : degreeToMidi((round.lanes[lane].degree ?? 0) + track.shiftAt(round.id, lane, slot),
+          spec.octaves, track.scale);
 
       // A drum is a struck object and its length is its own; a pitched note is
       // as long as she held it (dec:drums-do-not-sustain).

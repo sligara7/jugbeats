@@ -150,15 +150,51 @@ const holding = new Map();
 /** The live sounding note under each thumb, so it can be let go on release. */
 const held = new Map();
 
-const stage = new Stage(el('stage'), clock, { onHit, onRelease });
+const stage = new Stage(el('stage'), clock, {
+  onHit,
+  onRelease,
+  onShift,
+  shiftFor: (thumb) => (session.round ? track.shiftFor(session.round.id, thumb) : 0),
+  canShift: (thumb, dir) => (session.round ? track.canShift(session.round.id, thumb, dir) : false),
+});
 
 // ---------------------------------------------------------------------------
 // The hot path. Sound first, recording after — never the other way round.
 // ---------------------------------------------------------------------------
 
-function voiceFor(round, lane) {
+function voiceFor(round, lane, shift = 0) {
   const l = round.lanes[lane];
-  return { voice: l.voice, degree: l.degree ?? 0 };
+  // A drum has no pitch, so a shift cannot reach it — guarded here rather than
+  // at every call site.
+  return { voice: l.voice, degree: l.degree === undefined ? 0 : l.degree + shift };
+}
+
+/**
+ * An arrow moved a thumb.
+ *
+ * THE RENDER HAPPENS HERE, on the arrow rather than on the key. A degree the
+ * palette never named has no buffer until somebody reaches it (Voices.degrees),
+ * and building one takes a few milliseconds — so it is done at the moment she
+ * presses the arrow, where a few milliseconds are invisible, and never between
+ * a thumb and a sound.
+ */
+function onShift(thumb, dir) {
+  const round = session.round;
+  if (!round) return;
+  if (!track.canShift(round.id, thumb, dir)) return;
+
+  track.nudgeShift(round.id, thumb, dir);
+  for (const d of track.reachableDegrees(round.id, thumb)) voices.ensureDegree(d);
+
+  const at = track.shiftFor(round.id, thumb);
+  const names = round.lanes
+    .map((l, i) => ({ l, i }))
+    .filter(({ l, i }) => l.degree !== undefined && track.thumbOf(round.id, i) === thumb)
+    .map(({ l }) => l.name);
+  flash(at === 0
+    ? `${thumb === 0 ? 'left' : 'right'} keys back where they started`
+    : `${names.join(' and ')} — ${Math.abs(at)} ${Math.abs(at) === 1 ? 'note' : 'notes'} ${at > 0 ? 'up' : 'down'}`);
+  refresh();
 }
 
 function onHit(lane) {
@@ -175,7 +211,10 @@ function onHit(lane) {
   }
 
   const round = session.round;
-  const { voice, degree } = voiceFor(round, lane);
+  // WHERE HER THUMB IS SITTING RIGHT NOW. `track.record` bakes the same shift
+  // into the note a moment later, so what she hears and what is kept cannot
+  // disagree.
+  const { voice, degree } = voiceFor(round, lane, track.shiftFor(round.id, track.thumbOf(round.id, lane)));
 
   // 1. Sound. Now, with no time argument, so it goes at the earliest moment the
   //    audio thread will take it.
@@ -297,7 +336,9 @@ clock.onSchedule((from, to, timeOf) => {
         if (!seg.isRunStart(round.id, lane, slot)) continue;
         const key = `${round.id}:${lane}:${step}`;
         if (alreadySounded.delete(key)) continue;
-        const { voice, degree } = voiceFor(round, lane);
+        // THE NOTE'S OWN SHIFT, not the thumb's. This is the whole promise:
+        // what she played is what plays back, whatever the arrows say now.
+        const { voice, degree } = voiceFor(round, lane, seg.shiftAt(round.id, lane, slot));
         const gain = isEditing && round.id === session.round.id ? 1 : 0.8;
         // Sound it for as long as she held it. A drum ignores this and keeps
         // its own length; a pitched note takes the nearest rendered one.
@@ -1019,6 +1060,23 @@ voices.load().then(() => {
   for (const inst of Object.keys(palette.pitched)) {
     if (track.shaping[inst] && Object.keys(track.shaping[inst]).length) {
       voices.setShaping(inst, track.shaping[inst]);
+    }
+  }
+
+  // A LINK THAT ARRIVES WITH SHIFTS IN IT NEEDS THEM RENDERED BEFORE IT PLAYS.
+  //
+  // Shifted degrees are built when a thumb reaches them (onShift), and nobody
+  // reaches anything when a beat is opened from a link — so without this, a
+  // track somebody sent would come back with its shifted notes SILENT, which is
+  // the same shape of fault as fact:the-octave-lane-plays-the-root and would be
+  // just as quiet. Done once, here, while she is still reading the gate.
+  for (const seg of song.segments) {
+    for (const round of seg.rounds) {
+      for (const { lane, shift } of seg.notes(round.id)) {
+        if (!shift) continue;
+        const base = round.lanes[lane]?.degree;
+        if (base !== undefined) voices.ensureDegree(base + shift);
+      }
     }
   }
   el('gate-label').textContent = incoming ? 'tap to hear it' : 'tap to start';
