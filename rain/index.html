@@ -98,10 +98,12 @@ const CEILING = 0.18;
  * 320-3410 Hz to 150-1700, which is much the larger of the two changes, and the
  * drops lost their brightest octave with it — otherwise they become the only
  * sharp thing left and stick out of a bed that is no longer sharp.
+ *
+ * The drops' own ceiling moved again when the awning arrived: the canvas has a
+ * lowpass of its own at AWNING_TOP and there is no point in two.
  */
 const HISS_LOW = 150;
 const HISS_TOP = 1700;
-const DROP_TOP = 3600;
 
 /**
  * HOW FAR THE NOISE IS TILTED FROM PINK TOWARDS BROWN — his other instruction,
@@ -146,14 +148,17 @@ const NOISE = 0.45;
  * worth keeping: NOTHING HAD TOUCHED THE DROPS, and they had still got louder.
  * Twice turning the wash down moved them from 0.48 of the hiss, where they were
  * first balanced, to 0.79 — loud enough to start reading as ticking rather than
- * as rain. This puts them back at 0.51, which is where they were designed to
- * sit, except that the whole bed around them is now quieter and darker.
+ * as rain.
+ *
+ * AND IT HAPPENED AGAIN when the awning arrived: the surface lifted them to 0.96
+ * of the hiss without a number of theirs changing. 0.383 is what puts the ratio
+ * back to 0.57, which is where his ear left it.
  *
  * THAT IS WHY THIS IS ITS OWN DIAL RATHER THAN A NUMBER FOLDED INTO THE LEVELS
  * ABOVE. Every measured figure in this file is stated before its multiplier, so
  * moving one of the three — noise, drops, density — never silently moves another.
  */
-const DROPS = 0.65;
+const DROPS = 0.383;
 
 /**
  * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
@@ -228,6 +233,88 @@ function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
   return buf;
 }
 
+/**
+ * THE AWNING — the surface the rain is falling ON.
+ *
+ * The owner's idea, 2026-09-21: "try filtering it so it sounds like it is
+ * hitting a canvas tent, a tin roof, or heavy leaves. This muffles the sharp
+ * 'splat' of the water droplets, turning the rain into a deeper, incredibly
+ * cozy rumble."
+ *
+ * TWO THINGS HAVE TO HAPPEN AT ONCE, and doing only one of them does not work.
+ *
+ *   THE SPLAT HAS TO GO. Water hitting stone is a sharp broadband transient;
+ *   water hitting stretched canvas is a damped thud, because the cloth absorbs
+ *   the top and gives it back lower. That is the lowpass.
+ *
+ *   AND THE SURFACE HAS TO SPEAK. A tent is not a filter, it is a drum — a
+ *   membrane a couple of metres across with its own low modes, excited by every
+ *   drop that lands on it. Three gentle peaks stand in for those modes. They are
+ *   what turns "quiet rain" into "rain on something", and they are the whole
+ *   reason a lowpass alone sounds muffled rather than cosy.
+ *
+ * MODEST BOOSTS ON PURPOSE. Push these and it stops being canvas and becomes a
+ * tin roof ringing, which is a different and much less restful thing. The trim
+ * afterwards puts the level back where it was, so adding the surface does not
+ * quietly undo the balance that was set by ear.
+ */
+const AWNING = [
+  { hz: 105, q: 1.6, gain: 7.0 },
+  { hz: 197, q: 2.2, gain: 5.0 },
+  { hz: 340, q: 2.8, gain: 3.5 },
+];
+
+/** Where the canvas stops passing anything. Low, because this is the muffling. */
+const AWNING_TOP = 1500;
+
+/**
+ * MEASURED, NOT GUESSED, so the resonances do not arrive as a volume increase.
+ *
+ * The surface adds a great deal: three boosts plus a lowpass that concentrates
+ * what is left into the band the boosts sit in. A first guess of 0.42 was wrong
+ * twice over, and the second way is the instructive one.
+ *
+ * ONE TRIM CANNOT SERVE TWO LAYERS, because the awning does different things to
+ * each. It is set here to hold the HISS exactly where three rounds of listening
+ * put it — that is the bed, and the level the owner actually approved. The drops
+ * are then pulled back separately by DROPS, because through the awning they
+ * arrived at 0.96 of the hiss against the 0.57 he had settled on.
+ *
+ * Adding a character must not quietly re-tune the levels underneath it. That is
+ * the whole reason these numbers were solved together rather than one at a time.
+ */
+const AWNING_TRIM = 0.669;
+
+/**
+ * Build the surface: everything that lands on it goes in, the coloured result
+ * comes out. Plain filter nodes, so it runs on the audio thread and needs
+ * nothing after the tap like the rest of the bed.
+ */
+function awning(ctx, dest, t0) {
+  const input = ctx.createGain();
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.7;
+  lp.frequency.setValueAtTime(AWNING_TOP, t0);
+
+  let node = lp;
+  for (const m of AWNING) {
+    const peak = ctx.createBiquadFilter();
+    peak.type = 'peaking';
+    peak.frequency.setValueAtTime(m.hz, t0);
+    peak.Q.value = m.q;
+    peak.gain.setValueAtTime(m.gain, t0);
+    node.connect(peak);
+    node = peak;
+  }
+
+  const trim = ctx.createGain();
+  trim.gain.value = AWNING_TRIM;
+  input.connect(lp);
+  node.connect(trim).connect(dest);
+  return input;
+}
+
 /** A shower easing in and out. Far slower and far gentler than a wave — rain
  *  does not surge, it thickens. */
 const showerShape = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
@@ -239,9 +326,17 @@ runBed({
   fadeOut: 90,
 
   build(ctx, dest, t0, sources) {
+    // THE SURFACE EVERYTHING LANDS ON. Both the hiss and the drops go through
+    // it, because both of them ARE rain hitting the canvas — the hiss is the
+    // thousands of impacts too small to pick out, and colouring only the loud
+    // ones would put them on a different roof from the quiet ones.
+    const surface = awning(ctx, dest, t0);
+
     // ── the rumble ────────────────────────────────────────────────────────
-    // Rain on a roof, a long way down. Constant, and the reason the bed has a
-    // body rather than just a surface.
+    // Rain a long way off, under everything. This one goes DIRECT rather than
+    // through the awning: it is the rain you hear beyond the canvas, and putting
+    // it through the same resonances would leave the bed with no depth behind
+    // the surface at all.
     noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 * NOISE, brown: BROWN }, dest, t0);
 
     // ── the hiss ──────────────────────────────────────────────────────────
@@ -261,7 +356,7 @@ runBed({
     const hiss = ctx.createBufferSource();
     hiss.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
     hiss.loop = true;
-    hiss.connect(hp).connect(lp).connect(hissGain).connect(dest);
+    hiss.connect(hp).connect(lp).connect(hissGain).connect(surface);
     hiss.start(t0);
     sources.push(hiss);
 
@@ -283,26 +378,23 @@ runBed({
     // big ones further off. Their patterns drift apart and never realign.
     const near = ctx.createBufferSource();
     near.buffer = dropLoop(ctx, {
-      seconds: 19.7, perSecond: 13, hzLow: 900, hzHigh: 4200, decay: 0.006, level: 2.2,
+      // LOWER AND LONGER THAN A DROP ON STONE. On canvas the impact does not
+      // click, it thumps, and the cloth holds the note for a moment afterwards.
+      seconds: 19.7, perSecond: 13, hzLow: 260, hzHigh: 1300, decay: 0.020, level: 2.2,
     });
     near.loop = true;
 
     const far = ctx.createBufferSource();
     far.buffer = dropLoop(ctx, {
-      seconds: 23.3, perSecond: 3.5, hzLow: 320, hzHigh: 1100, decay: 0.016, level: 1.6,
+      seconds: 23.3, perSecond: 3.5, hzLow: 110, hzHigh: 430, decay: 0.045, level: 1.6,
     });
     far.loop = true;
 
-    const dropLp = ctx.createBiquadFilter();
-    dropLp.type = 'lowpass';
-    dropLp.frequency.setValueAtTime(DROP_TOP, t0);
-    dropLp.Q.value = 0.7;
-
     const dropGain = ctx.createGain();
     dropGain.gain.value = 0.9 * DROPS;
-    near.connect(dropLp);
-    far.connect(dropLp);
-    dropLp.connect(dropGain).connect(dest);
+    near.connect(dropGain);
+    far.connect(dropGain);
+    dropGain.connect(surface);
     near.start(t0);
     far.start(t0);
     sources.push(near, far);
