@@ -315,6 +315,42 @@ function awning(ctx, dest, t0) {
   return input;
 }
 
+/**
+ * THE SHOWER — the rain thickening and easing over minutes. Three coprime
+ * periods, so it never does it twice the same way.
+ */
+const SHOWER = [[37, 0.13], [53, 0.10], [71, 0.08]];
+
+/**
+ * THE GUSTS — the owner's ear again, 2026-09-21: "maybe put a small rhythm to
+ * the intensity of the background noise to simulate small fluctuations in the
+ * rain/wind intensity."
+ *
+ * The same mechanism as the shower, an order of magnitude faster and much
+ * shallower. The shower is weather over minutes; this is the wind leaning on it
+ * every few seconds, which is the movement an ear notices as ALIVE rather than
+ * as a recording.
+ *
+ * COPRIME AND SHALLOW, both load-bearing. Coprime because three periods that
+ * share a multiple would beat together into an audible pulse, and a pulse is a
+ * small event repeating — the exact thing a bed exists not to have. Shallow
+ * because a gust that swings as hard as the shower does stops being weather and
+ * becomes someone turning a knob.
+ */
+const GUSTS = [[5.3, 0.045], [8.9, 0.035], [13.7, 0.025]];
+
+/**
+ * WHAT THE HISS SITS AT BEFORE ANYTHING MODULATES IT.
+ *
+ * ⚠️ EVERY MODULATOR ADDS, so adding the gusts would have raised the AVERAGE
+ * level by half their total depth — about 9% — and quietly handed back a slice
+ * of what four rounds of listening had taken off. This is the third time in two
+ * days that a change has moved a level nobody touched, so it is compensated at
+ * the source rather than noticed afterwards: the base drops by exactly the mean
+ * the gusts contribute, and the bed sits where his ear left it.
+ */
+const HISS_BASE = 0.42 - 0.5 * GUSTS.reduce((n, [, amount]) => n + amount, 0);
+
 /** A shower easing in and out. Far slower and far gentler than a wave — rain
  *  does not surge, it thickens. */
 const showerShape = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
@@ -360,10 +396,10 @@ runBed({
     hiss.start(t0);
     sources.push(hiss);
 
-    // The shower. Three coprime periods, all far longer than a wave's, so the
-    // rain thickens and eases over minutes and never does it twice the same way.
-    hissGain.gain.setValueAtTime(0.42 * NOISE, t0);
-    for (const [seconds, amount] of [[37, 0.13], [53, 0.10], [71, 0.08]]) {
+    hissGain.gain.setValueAtTime(HISS_BASE * NOISE, t0);
+
+    // The shower: weather over minutes.
+    for (const [seconds, amount] of SHOWER) {
       const shape = envelopeLoop(ctx, seconds, showerShape);
       // The swell scales WITH the level, so the rain still thickens and eases by
       // the same proportion of itself rather than heaving by a fixed amount.
@@ -371,6 +407,16 @@ runBed({
       // The BRIGHTNESS does not scale. That is a cutoff, not a level, and
       // quieter rain is not duller rain — it is the same weather further off.
       modulate(ctx, sources, shape, amount * 1100, t0, lp.frequency);
+    }
+
+    // The gusts: the wind leaning on it every few seconds.
+    for (const [seconds, amount] of GUSTS) {
+      const shape = envelopeLoop(ctx, seconds, showerShape);
+      modulate(ctx, sources, shape, amount * NOISE, t0, hissGain.gain);
+      // DELIBERATELY NO BRIGHTNESS ON THESE. A gust does open the top a little in
+      // life, but the last three corrections were all about taking the top OFF,
+      // and a fast flicker in the treble is the first thing an ear picks out of a
+      // quiet room. Level only.
     }
 
     // ── the drops ─────────────────────────────────────────────────────────
