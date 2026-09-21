@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Waves</title>
+
+<!--
+  THE WAVES PAGE — the sleep bed, with the sea in it.
+
+  WHY THIS EXISTS. The owner's mother heard /sleep/ and said it reminded her of
+  waves at the ocean; he had thought the same. That is not a coincidence — the
+  sleep bed is low-weighted pink noise with slow movement on level and on
+  brightness, which is most of what distant surf is. This page keeps those
+  frequencies and gives them the RHYTHM.
+
+  DELIBERATELY A SECOND PAGE RATHER THAN A CHANGE TO THE FIRST, at his request.
+  /sleep/ is proved on a phone overnight and is in use; this is a variation, and
+  a variation that edits the thing it varies is how a working page stops working.
+
+  ⚠️ IT SHARES CODE WITH /sleep/ BY COPY, and that is a known cost rather than an
+  oversight. dec:styles-are-palettes says what this project does when two things
+  differ only in data: it holds one engine and many palettes. These two differ by
+  more than data — the modulation architecture is genuinely different — but the
+  noise generation, the session envelope, the keepalive and the shell are the
+  same, and if a third bed is ever wanted the right move is to lift those out
+  rather than copy them a second time.
+
+  ── HOW A WAVE IS MADE, AND WHY IT IS NOT A TIMER ──────────────────────────
+
+  The one property this whole family of pages rests on is that NO JAVASCRIPT
+  RUNS AFTER THE TAP: a backgrounded tab on a locked phone has its timers
+  throttled or stopped, so anything that has to keep happening must happen on the
+  audio thread. Scheduling eight hours of individual wave events up front would
+  be thousands of automation points, and a setInterval that drew them as it went
+  would simply stop when the screen did.
+
+  SO THE WAVES COME OUT OF THE AUDIO GRAPH ITSELF. An AudioBufferSourceNode can
+  be connected to an AudioParam, so a buffer holding the SHAPE of one wave,
+  looped, IS a modulator — and it runs where the audio runs, needing nothing.
+
+  Three of them at coprime lengths are summed onto the surf's gain and its filter
+  cutoff. Because 11.3, 17.9 and 23.7 seconds share no common multiple, their
+  peaks drift in and out of alignment and never repeat the same way: sometimes
+  three coincide and a big one arrives, sometimes none do and the sea is quiet
+  for a while. Real surf comes in sets, and this is that for free.
+
+  THE SHAPE OF EACH WAVE IS ASYMMETRIC, which is the part that matters most. A
+  sine rises and falls evenly and sounds like a machine breathing. A wave builds
+  slowly, breaks, hisses out over longer than it took to build, and leaves a
+  trough. That asymmetry is the whole difference between "noise going up and
+  down" and "the sea".
+
+  AND BRIGHTNESS FOLLOWS THE BREAK. The same envelope opens the lowpass as it
+  opens the gain, so a wave arrives as a low swell and breaks into foam, instead
+  of just getting louder. Underneath it all an undertow runs at a constant level
+  and never stops, so the sea is never silent between waves.
+-->
+
+<meta name="theme-color" content="#050a0e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Waves">
+<meta property="og:description" content="Slow surf to fall asleep to. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/waves/">
+
+<style>
+  :root { color-scheme: dark; --ink:#eaf2f6; --dim:#7f95a3; --accent:#7fd6ff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: #050a0e; color: var(--ink);
+    font: 500 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top,0px)) 20px calc(24px + env(safe-area-inset-bottom,0px));
+    text-align: center;
+    transition: background 1.2s;
+  }
+  body.playing { background: #000; }
+
+  h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.02em; font-weight: 600; }
+  .sub { margin: 0 0 4px; color: var(--dim); font-size: 15px; max-width: 22em; }
+
+  .place {
+    margin: 18px 0 26px; padding: 12px 16px; max-width: 22em;
+    border: 1px solid #ffffff1f; border-radius: 12px;
+    color: var(--accent); font-size: 14px; line-height: 1.45;
+  }
+
+  .label { color: var(--dim); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+
+  .times { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; width: 100%; max-width: 22em; }
+  .times button {
+    appearance: none; font: inherit; font-size: 19px; font-weight: 600;
+    padding: 20px 8px; border-radius: 16px; cursor: pointer;
+    border: 1px solid #ffffff2b; background: #ffffff0d; color: var(--ink);
+    transition: transform .1s, background .15s;
+  }
+  .times button:active { transform: scale(.97); background: #ffffff1a; }
+
+  #playing { display: none; }
+  body.playing #start { display: none; }
+  body.playing #playing { display: block; }
+  .left { font-size: 15px; color: var(--dim); }
+  .clock { font-size: 64px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 10px 0 2px; letter-spacing: -0.02em; }
+  .hint { color: #4e626e; font-size: 14px; margin: 28px 0 0; max-width: 20em; }
+  #stop {
+    appearance: none; font: inherit; font-size: 15px; margin-top: 30px;
+    padding: 13px 30px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #ffffff26; background: transparent; color: var(--dim);
+  }
+  .err { color: #ff90ab; font-size: 14px; margin-top: 18px; min-height: 1em; }
+</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Waves</h1>
+    <p class="sub">Slow surf, a long way off.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // -------------------------------------------------------------------------
+  // The numbers. All judgements, so all in one place.
+  // -------------------------------------------------------------------------
+
+  /** Output ceiling. No volume control, for the reason /sleep/ gives: a page
+   *  knows its own gain and nothing about the room. A shade under the sleep
+   *  page's because breaking waves carry more high end and read louder. */
+  const CEILING = 0.20;
+
+  const FADE_IN = 10;
+  const FADE_OUT = 90;
+
+  /** THE UNDERTOW — always there, never moves. The sea between waves. */
+  const UNDERTOW = { seconds: 11.7, cut: 260, gain: 0.85 };
+
+  /** THE SURF — the layer the waves actually happen to. Lowpassed low at rest
+   *  and opened by the wave envelope, so a wave BREAKS rather than just swells. */
+  const SURF = { seconds: 13.9, cutFloor: 380, cutSwing: 1150, gain: 1.0 };
+
+  /**
+   * THREE WAVE CYCLES AT COPRIME LENGTHS. No common multiple, so their peaks
+   * drift in and out of phase and never repeat the same way — sometimes three
+   * land together and a big one arrives, sometimes none do and it goes quiet.
+   * Real surf comes in sets; this is that, for nothing.
+   *
+   * Periods are in the range an ocean swell actually sits in, roughly 8-20
+   * seconds between breaking waves.
+   */
+  const WAVES = [
+    { seconds: 11.3, amount: 0.46 },
+    { seconds: 17.9, amount: 0.32 },
+    { seconds: 23.7, amount: 0.26 },
+  ];
+
+  /** The envelope buffers do not need audio resolution — they are slower than
+   *  anything audible. 8 kHz keeps them small and the browser resamples. */
+  const ENV_RATE = 8000;
+
+  // -------------------------------------------------------------------------
+
+  let ctx = null, sources = [], keepAlive = null, endsAtMs = 0, ticker = 0, silenceUrl = null;
+
+  /** Pink noise, crossfaded so the loop point cannot be heard. */
+  function pinkLoop(seconds, rate) {
+    const n = Math.floor(seconds * rate);
+    const fade = Math.floor(0.4 * rate);
+    const raw = new Float32Array(n + fade);
+
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + w * 0.0555179;
+      b1 = 0.99332 * b1 + w * 0.0750759;
+      b2 = 0.96900 * b2 + w * 0.1538520;
+      b3 = 0.86650 * b3 + w * 0.3104856;
+      b4 = 0.55000 * b4 + w * 0.5329522;
+      b5 = -0.7616 * b5 - w * 0.0168980;
+      raw[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+      b6 = w * 0.115926;
+    }
+
+    const buf = ctx.createBuffer(1, n, rate);
+    const out = buf.getChannelData(0);
+    out.set(raw.subarray(0, n));
+    for (let i = 0; i < fade; i++) {
+      const t = i / fade;
+      out[i] = out[i] * Math.sqrt(t) + raw[n + i] * Math.sqrt(1 - t);
+    }
+    return buf;
+  }
+
+  /**
+   * ONE WAVE, AS A SHAPE — the part that decides whether this is the sea or a
+   * machine breathing.
+   *
+   * A sine is symmetric and sounds wrong immediately. A wave spends longer
+   * running out than it did building: it gathers (slowly, accelerating), breaks
+   * (briefly), hisses away (longer than the build), and leaves a trough before
+   * the next one. These four spans are the whole character.
+   *
+   * It never reaches zero at the ends because it is summed with two others and a
+   * hard zero would put a corner in the result; the trough is low, not silent.
+   */
+  function waveShape(seconds) {
+    const n = Math.floor(seconds * ENV_RATE);
+    const buf = ctx.createBuffer(1, n, ENV_RATE);
+    const out = buf.getChannelData(0);
+
+    const BUILD = 0.34;   // gathering
+    const CREST = 0.10;   // breaking
+    const RUN   = 0.40;   // hissing out
+    // the remainder, ~0.16, is the trough
+
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      let v;
+      if (t < BUILD) {
+        // Accelerating swell. The exponent is what keeps the start unhurried.
+        v = Math.pow(t / BUILD, 2.3);
+      } else if (t < BUILD + CREST) {
+        const u = (t - BUILD) / CREST;
+        // A slight overshoot at the break, then straight into the run-out.
+        v = 1 + 0.06 * Math.sin(u * Math.PI);
+      } else if (t < BUILD + CREST + RUN) {
+        const u = (t - BUILD - CREST) / RUN;
+        v = Math.exp(-3.1 * u);
+      } else {
+        const u = (t - BUILD - CREST - RUN) / (1 - BUILD - CREST - RUN);
+        // Settle into the trough rather than dropping into it.
+        v = Math.exp(-3.1) * (1 - u) * 0.6;
+      }
+      out[i] = v;
+    }
+    return buf;
+  }
+
+  /** A looping buffer used as a modulator: an AudioBufferSourceNode can drive an
+   *  AudioParam, which is what lets the waves run with no JavaScript at all. */
+  function modulator(buffer, amount, startAt, ...params) {
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const g = ctx.createGain();
+    g.gain.value = amount;
+    src.connect(g);
+    for (const p of params) g.connect(p);
+    src.start(startAt);
+    sources.push(src);
+    return g;
+  }
+
+  function start(minutes) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { fail('This browser cannot play sound.'); return; }
+
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+
+    ctx = new Ctx();
+    ctx.resume();
+
+    const total = minutes * 60;
+    const t0 = ctx.currentTime + 0.05;
+    const end = t0 + total;
+    const rate = ctx.sampleRate;
+
+    // --- output stage ------------------------------------------------------
+    const ceiling = ctx.createGain();
+    ceiling.gain.value = CEILING;
+    ceiling.connect(ctx.destination);
+
+    // The session envelope, scheduled once and never touched again. This is
+    // what has to survive the screen going off.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.linearRampToValueAtTime(1, t0 + Math.min(FADE_IN, total / 4));
+    env.gain.setValueAtTime(1, Math.max(t0 + FADE_IN, end - FADE_OUT));
+    env.gain.linearRampToValueAtTime(0.0001, end);
+    env.connect(ceiling);
+
+    // --- the undertow: constant, low, never stops --------------------------
+    {
+      const src = ctx.createBufferSource();
+      src.buffer = pinkLoop(UNDERTOW.seconds, rate);
+      src.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 0.7;
+      lp.frequency.setValueAtTime(UNDERTOW.cut, t0);
+      const g = ctx.createGain();
+      g.gain.value = UNDERTOW.gain;
+      src.connect(lp).connect(g).connect(env);
+      src.start(t0);
+      sources.push(src);
+    }
+
+    // --- the surf: the layer the waves happen to ---------------------------
+    const surfGain = ctx.createGain();
+    const surfLp = ctx.createBiquadFilter();
+    surfLp.type = 'lowpass';
+    surfLp.Q.value = 0.8;
+
+    // Both parameters start at the bottom of their travel; the wave envelopes
+    // ADD to them, so a quiet moment really is quiet and a big one really is
+    // three waves arriving together.
+    surfGain.gain.setValueAtTime(0, t0);
+    surfLp.frequency.setValueAtTime(SURF.cutFloor, t0);
+
+    {
+      const src = ctx.createBufferSource();
+      src.buffer = pinkLoop(SURF.seconds, rate);
+      src.loop = true;
+      src.connect(surfLp).connect(surfGain).connect(env);
+      src.start(t0);
+      sources.push(src);
+    }
+
+    // THE WAVES THEMSELVES. Each cycle drives the gain and, scaled up, the
+    // filter — so a wave brightens as it breaks instead of merely getting
+    // louder. Coprime lengths mean the three never line up the same way twice.
+    for (const w of WAVES) {
+      const shape = waveShape(w.seconds);
+      modulator(shape, w.amount * SURF.gain, t0, surfGain.gain);
+      modulator(shape, w.amount * SURF.cutSwing, t0, surfLp.frequency);
+    }
+
+    sources.forEach((s) => { try { s.stop(end + 0.5); } catch (e) {} });
+
+    keepAlive = silentElement(minutes);
+    endsAtMs = Date.now() + total * 1000;
+    document.body.classList.add('playing');
+    tick();
+    ticker = setInterval(tick, 1000);
+  }
+
+  /** Two real seconds of silence, so iOS files this under playback rather than
+   *  under "a page is open". Built rather than pasted — the data URI the spike
+   *  used had a zero-length data chunk and could not have been doing its job. */
+  function makeSilence(seconds, rate) {
+    const frames = seconds * rate;
+    const bytes = new Uint8Array(44 + frames);
+    const view = new DataView(bytes.buffer);
+    const ascii = (at, s) => { for (let i = 0; i < s.length; i++) bytes[at + i] = s.charCodeAt(i); };
+    ascii(0, 'RIFF');       view.setUint32(4, 36 + frames, true);
+    ascii(8, 'WAVEfmt ');   view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
+    ascii(36, 'data');      view.setUint32(40, frames, true);
+    bytes.fill(128, 44);    // 8-bit silence is 128; zero is full-scale negative
+    return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+  }
+
+  function silentElement(minutes) {
+    const el = document.createElement('audio');
+    el.loop = true;
+    silenceUrl = makeSilence(2, 8000);
+    el.src = silenceUrl;
+    el.volume = 0.001;
+    el.setAttribute('playsinline', '');
+    document.body.appendChild(el);
+    el.play().catch(() => {});
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Waves', artist: `${minutes} minutes`,
+        });
+        navigator.mediaSession.playbackState = 'playing';
+        navigator.mediaSession.setActionHandler('pause', stop);
+        navigator.mediaSession.setActionHandler('stop', stop);
+      } catch (e) {}
+    }
+    return el;
+  }
+
+  function stop() {
+    clearInterval(ticker);
+    sources.forEach((s) => { try { s.stop(); } catch (e) {} });
+    sources = [];
+    if (keepAlive) { keepAlive.pause(); keepAlive.remove(); keepAlive = null; }
+    if (silenceUrl) { URL.revokeObjectURL(silenceUrl); silenceUrl = null; }
+    if (ctx) { ctx.close(); ctx = null; }
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
+    }
+    document.body.classList.remove('playing');
+  }
+
+  function tick() {
+    const left = Math.max(0, Math.round((endsAtMs - Date.now()) / 1000));
+    const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+    document.getElementById('clock').textContent =
+      h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+        : `${m}:${String(s).padStart(2, '0')}`;
+    if (left === 0) stop();
+  }
+
+  function fail(msg) { document.getElementById('err').textContent = msg; }
+
+  document.querySelectorAll('.times button').forEach((b) => {
+    b.addEventListener('click', () => start(Number(b.dataset.min)));
+  });
+  document.getElementById('stop').addEventListener('click', stop);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state === 'suspended') ctx.resume();
+  });
+})();
+</script>
+</body>
+</html>
