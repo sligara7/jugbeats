@@ -96,5 +96,40 @@ for (const [name, render] of VOICES) {
   }
 }
 
+console.log('\nevery note a lane can ask for is a note the renderer makes');
+
+// THE CLASS THIS PINS, and it is not "degree 5".
+//
+// Two lists have to agree and were maintained independently: the degrees a
+// palette's rounds REFERENCE, declared per lane in palettes.js, and the degrees
+// the renderer PRODUCES. The second used to be derived from the SCALE LENGTH, so
+// a five-note pentatonic rendered degrees 0-4 while five palettes declared a
+// lane named '8ve' at degree 5 — and `play`/`startHeld` wrapped the request back
+// round, so that lane quietly sounded the ROOT an octave below what it said.
+//
+// The wrap is why it survived: a missing buffer is silence, and a dead key on a
+// four-key game is found in the first minute. A key that answers in time, in
+// tune, in the right voice and one octave low is found by nobody.
+//
+// This checks the INVARIANT rather than the instance, so a new lane, a shorter
+// scale or a sixth palette cannot reopen it (fact:the-octave-lane-plays-the-root).
+{
+  const { PALETTES } = await import('../js/palettes.js');
+  const { _degreesFor } = await import('../js/voices.js');
+
+  for (const p of PALETTES) {
+    const rendered = new Set(_degreesFor(p));
+    const used = new Set([0]);
+    for (const r of p.rounds) for (const l of r.lanes) {
+      if (l.degree !== undefined) used.add(l.degree);
+    }
+    const missing = [...used].filter((d) => !rendered.has(d)).sort((a, b) => a - b);
+    check(`${p.key}: every lane degree is rendered`, missing.length === 0,
+      missing.length
+        ? `lanes ask for ${missing.join(',')} and nothing renders it`
+        : `${used.size} degree(s), all rendered`);
+  }
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

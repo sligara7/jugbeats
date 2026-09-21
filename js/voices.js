@@ -19,13 +19,39 @@ import { renderClick, degreeToHz, NEUTRAL } from './dsp.js';
 import { PHONK } from './palettes.js';
 
 /**
- * Degrees we pre-render — one octave of whatever scale the palette is using.
+ * Degrees we pre-render — EVERY DEGREE THIS PALETTE'S LANES ACTUALLY ASK FOR.
  *
  * A FUNCTION rather than a constant, because the scale is now a palette's choice
  * and this used to be captured at module load. A six-note scale would have had
  * its top note silently unrendered.
+ *
+ * AND IT IS DERIVED FROM THE LANES RATHER THAN FROM THE SCALE, which is the fix
+ * for fact:the-octave-lane-plays-the-root. It used to be
+ * `palette.scale.map((_, i) => i)` — one octave of the scale — so a five-note
+ * pentatonic rendered degrees 0-4 while five palettes declared a lane named
+ * '8ve' at degree 5. That lane sounded the ROOT, an octave below what it said.
+ *
+ * THE CLASS WAS TWO LISTS THAT HAD TO AGREE AND WERE MAINTAINED SEPARATELY: the
+ * degrees the lanes reference, in palettes.js, and the degrees the renderer
+ * produces, here. Reading the first to build the second makes them one list, so
+ * they cannot disagree — a new lane, a shorter scale or a seventh palette is
+ * covered without anybody remembering to widen this. Pinned in test/voices.mjs.
+ *
+ * Degree 0 is always included: it is the default in `play` and what an unpitched
+ * lane resolves to.
  */
-const degrees = (palette) => palette.scale.map((_, i) => i);
+const degrees = (palette) => {
+  const used = new Set([0]);
+  for (const round of palette.rounds ?? []) {
+    for (const lane of round.lanes ?? []) {
+      if (lane.degree !== undefined) used.add(lane.degree);
+    }
+  }
+  return [...used].sort((a, b) => a - b);
+};
+
+/** Exposed so test/voices.mjs can hold the invariant above. */
+export const _degreesFor = degrees;
 
 /**
  * Per-voice level, applied on top of whatever the caller asks for.
@@ -386,12 +412,16 @@ export class Voices {
    */
   play(voice, { degree = 0, time, gain = 1, chord = 0, seconds } = {}) {
     const at = time ?? this.ctx.currentTime;
-    const n = degrees(this.palette).length;
     const c = this._chordFor(voice, chord);
     const len = nearestLength(seconds ?? LENGTHS[1]);
-    const buf =
-      this.drums.get(voice) ??
-      this.buffer(voice, ((degree % n) + n) % n, c, len);
+    // THE DEGREE IS ASKED FOR EXACTLY. This used to wrap into the rendered range
+    // with `((degree % n) + n) % n`, which is the half of
+    // fact:the-octave-lane-plays-the-root that hid the other half: a degree
+    // nobody rendered found SOME buffer instead of none, so '8ve' answered with
+    // the root rather than falling silent where anyone would have noticed.
+    // `degrees()` now renders every degree a lane can name, so there is nothing
+    // left to wrap.
+    const buf = this.drums.get(voice) ?? this.buffer(voice, degree, c, len);
     if (!buf) return;
 
     const src = this.ctx.createBufferSource();
@@ -419,9 +449,10 @@ export class Voices {
  * The recorded half picks a rendered length once the run is known.
  */
 Voices.prototype.startHeld = function startHeld(voice, { degree = 0, chord = 0, gain = 1 } = {}) {
-  const n = degrees(this.palette).length;
+
   const c = this._chordFor(voice, chord);
-  const buf = this.buffer(voice, ((degree % n) + n) % n, c, LENGTHS.length - 1);
+  // Exact, for the same reason as `play` above.
+  const buf = this.buffer(voice, degree, c, LENGTHS.length - 1);
   if (!buf) return { release() {} };
 
   const src = this.ctx.createBufferSource();
