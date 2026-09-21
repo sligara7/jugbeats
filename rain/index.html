@@ -83,9 +83,36 @@ import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer } from '../js/bed.
 /** Below the other two beds. Rain is brighter, and brighter reads louder. */
 const CEILING = 0.18;
 
-/** Where the top is rolled off. Real rain goes far higher; over eight hours
- *  beside a sleeping baby, higher is the part that turns harsh. */
-const TOP = 5500;
+/**
+ * WHERE THE TOP IS ROLLED OFF — and this is the lever that decides whether it is
+ * a downpour or weather outside a window.
+ *
+ * The owner, 2026-09-21, having heard it: "kind of feels like you're in a
+ * torrential downpour - maybe the frequency of the pink noise should shift
+ * downwards to more brown noise so that it doesn't feel like you're in a
+ * monsoon."
+ *
+ * He is describing the right thing. What makes rain sound CLOSE is its high end:
+ * standing in it, you hear every impact; through a window, the glass and the
+ * distance take the top off and leave the body. So the hiss band came down from
+ * 320-3410 Hz to 150-1700, which is much the larger of the two changes, and the
+ * drops lost their brightest octave with it — otherwise they become the only
+ * sharp thing left and stick out of a bed that is no longer sharp.
+ */
+const HISS_LOW = 150;
+const HISS_TOP = 1700;
+const DROP_TOP = 3600;
+
+/**
+ * HOW FAR THE NOISE IS TILTED FROM PINK TOWARDS BROWN — his other instruction,
+ * and a separate control on purpose.
+ *
+ * Measured across the blend: the share of energy above 1.5 kHz falls from 49%
+ * at pink to 26% at brown, while the rms does not move at all. So this changes
+ * the COLOUR and nothing else, and the level below can be set without fighting
+ * it.
+ */
+const BROWN = 0.8;
 
 /**
  * HOW LOUD THE NOISE IS AGAINST THE DROPS — the owner's ear, 2026-09-21, on the
@@ -95,8 +122,22 @@ const TOP = 5500;
  * It scales BOTH noise layers and leaves the drops alone, which is the point of
  * the note: the wash was covering the rain rather than carrying it. Every
  * measured level below is stated before this multiplier.
+ *
+ * TURNED DOWN A SECOND TIME on 2026-09-21 — "maybe turn down the intensity of
+ * the rain again" — from two thirds to 0.45.
+ *
+ * ⚠️ RAW RMS IS THE WRONG MEASURE HERE AND SAYS SO: overall it moves only -16%,
+ * because narrowing the hiss band to 150-1700 Hz lets more LOW energy through
+ * and that partly fills the gap. But low energy is body, not loudness — the ear
+ * judges broadband noise mostly between 500 Hz and 4 kHz, and in that band this
+ * is -34%. Another third off, as asked, measured where it is heard rather than
+ * where it is easiest to total up.
+ *
+ * Density is deliberately NOT touched. It is the obvious next dial if this is
+ * still too much, and moving it in the same breath would make it impossible to
+ * tell which of the two helped.
  */
-const NOISE = 2 / 3;
+const NOISE = 0.45;
 
 /**
  * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
@@ -185,7 +226,7 @@ runBed({
     // ── the rumble ────────────────────────────────────────────────────────
     // Rain on a roof, a long way down. Constant, and the reason the bed has a
     // body rather than just a surface.
-    noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 * NOISE }, dest, t0);
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 * NOISE, brown: BROWN }, dest, t0);
 
     // ── the hiss ──────────────────────────────────────────────────────────
     // The mass of rain: every impact too small to pick out. Bandpassed rather
@@ -194,15 +235,15 @@ runBed({
     const hissGain = ctx.createGain();
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.setValueAtTime(320, t0);
+    hp.frequency.setValueAtTime(HISS_LOW, t0);
     hp.Q.value = 0.6;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.7;
-    lp.frequency.setValueAtTime(TOP * 0.62, t0);
+    lp.frequency.setValueAtTime(HISS_TOP, t0);
 
     const hiss = ctx.createBufferSource();
-    hiss.buffer = pinkLoop(ctx, 13.9);
+    hiss.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
     hiss.loop = true;
     hiss.connect(hp).connect(lp).connect(hissGain).connect(dest);
     hiss.start(t0);
@@ -218,7 +259,7 @@ runBed({
       modulate(ctx, sources, shape, amount * NOISE, t0, hissGain.gain);
       // The BRIGHTNESS does not scale. That is a cutoff, not a level, and
       // quieter rain is not duller rain — it is the same weather further off.
-      modulate(ctx, sources, shape, amount * 2600, t0, lp.frequency);
+      modulate(ctx, sources, shape, amount * 1100, t0, lp.frequency);
     }
 
     // ── the drops ─────────────────────────────────────────────────────────
@@ -238,7 +279,7 @@ runBed({
 
     const dropLp = ctx.createBiquadFilter();
     dropLp.type = 'lowpass';
-    dropLp.frequency.setValueAtTime(TOP, t0);
+    dropLp.frequency.setValueAtTime(DROP_TOP, t0);
     dropLp.Q.value = 0.7;
 
     const dropGain = ctx.createGain();

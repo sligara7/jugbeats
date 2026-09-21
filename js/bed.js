@@ -49,12 +49,24 @@
  * a soft thump every few seconds, which is exactly the kind of small repeating
  * event a bed exists to avoid.
  */
-export function pinkLoop(ctx, seconds, rate = ctx.sampleRate) {
+export function pinkLoop(ctx, seconds, { brown = 0, rate = ctx.sampleRate } = {}) {
   const n = Math.floor(seconds * rate);
   const fade = Math.floor(0.4 * rate);
   const raw = new Float32Array(n + fade);
 
+  // `brown` TILTS THE SPECTRUM DOWNWARD, 0 for pink and 1 for brown.
+  //
+  // Pink falls at 3 dB an octave and brown at 6, and that difference is the
+  // difference between rain on your face and rain heard through a window — the
+  // high end is what reads as TORRENTIAL. Blending between them is a tone
+  // control with no filter in the graph, which matters because this buffer is
+  // generated once and then loops untouched for eight hours.
+  //
+  // Brown is a leaky integration of the same white noise the pink filter is fed,
+  // so the two are correlated and the blend moves smoothly rather than sounding
+  // like two noises fighting.
   let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  let br = 0;
   for (let i = 0; i < raw.length; i++) {
     const w = Math.random() * 2 - 1;
     b0 = 0.99886 * b0 + w * 0.0555179;
@@ -63,8 +75,25 @@ export function pinkLoop(ctx, seconds, rate = ctx.sampleRate) {
     b3 = 0.86650 * b3 + w * 0.3104856;
     b4 = 0.55000 * b4 + w * 0.5329522;
     b5 = -0.7616 * b5 - w * 0.0168980;
-    raw[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+    const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
     b6 = w * 0.115926;
+
+    br = (br + 0.018 * w) / 1.018;
+    raw[i] = brown ? pink * (1 - brown) + br * 3.6 * brown : pink;
+  }
+
+  // NORMALISED TO PINK'S OWN LEVEL, so `brown` is purely a TONE control and
+  // cannot quietly change how loud the bed is. Brown carries far more energy
+  // down low, and without this every tilt would also be a volume change —
+  // exactly the tangle that makes two knobs impossible to set independently.
+  if (brown) {
+    let sum = 0;
+    for (let i = 0; i < raw.length; i++) sum += raw[i] * raw[i];
+    const rms = Math.sqrt(sum / raw.length);
+    if (rms > 0) {
+      const g = 0.197 / rms;                 // pink's measured rms from this filter
+      for (let i = 0; i < raw.length; i++) raw[i] *= g;
+    }
   }
 
   const buf = ctx.createBuffer(1, n, rate);
@@ -118,9 +147,9 @@ export function modulate(ctx, sources, buffer, amount, startAt, ...params) {
 }
 
 /** A looping noise layer through a lowpass, which is most of what a bed is. */
-export function noiseLayer(ctx, sources, { seconds, cut, q = 0.7, gain = 1 }, dest, startAt) {
+export function noiseLayer(ctx, sources, { seconds, cut, q = 0.7, gain = 1, brown = 0 }, dest, startAt) {
   const src = ctx.createBufferSource();
-  src.buffer = pinkLoop(ctx, seconds);
+  src.buffer = pinkLoop(ctx, seconds, { brown });
   src.loop = true;
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
