@@ -88,6 +88,17 @@ const CEILING = 0.18;
 const TOP = 5500;
 
 /**
+ * HOW LOUD THE NOISE IS AGAINST THE DROPS — the owner's ear, 2026-09-21, on the
+ * first version anybody actually heard: "the pink noise intensity should be
+ * turned down by about a third".
+ *
+ * It scales BOTH noise layers and leaves the drops alone, which is the point of
+ * the note: the wash was covering the rain rather than carrying it. Every
+ * measured level below is stated before this multiplier.
+ */
+const NOISE = 2 / 3;
+
+/**
  * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
  *
  * A short noise burst through a two-pole resonator, which is about the cheapest
@@ -132,11 +143,12 @@ function addDrop(out, at, { hz, decay, level, rate }) {
  * are only the ones an ear picks out individually — the mass of rain is the
  * noise layer underneath.
  *
- * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN. Measured: the hiss arrives
- * at the mix at about 0.041 rms, and these levels put the two drop loops together
- * at roughly 0.42 of that — present enough to be picked out one at a time, quiet
- * enough that they sit ON the rain rather than in front of it. Peak stays near
- * 0.35, so nothing clips before the ceiling.
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN. Measured: at full noise
+ * the hiss arrives at the mix at about 0.041 rms and these levels put the two
+ * drop loops together at roughly 0.48 of that. With NOISE applied the hiss falls
+ * to about 0.027 and the same drops sit at roughly 0.72 of it — forward, which
+ * is what was asked for. Peaks stay near 0.46 and 0.31, so nothing clips before
+ * the ceiling.
  */
 function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
   const rate = ctx.sampleRate;
@@ -173,7 +185,7 @@ runBed({
     // ── the rumble ────────────────────────────────────────────────────────
     // Rain on a roof, a long way down. Constant, and the reason the bed has a
     // body rather than just a surface.
-    noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 }, dest, t0);
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 * NOISE }, dest, t0);
 
     // ── the hiss ──────────────────────────────────────────────────────────
     // The mass of rain: every impact too small to pick out. Bandpassed rather
@@ -198,12 +210,14 @@ runBed({
 
     // The shower. Three coprime periods, all far longer than a wave's, so the
     // rain thickens and eases over minutes and never does it twice the same way.
-    hissGain.gain.setValueAtTime(0.42, t0);
+    hissGain.gain.setValueAtTime(0.42 * NOISE, t0);
     for (const [seconds, amount] of [[37, 0.13], [53, 0.10], [71, 0.08]]) {
       const shape = envelopeLoop(ctx, seconds, showerShape);
-      modulate(ctx, sources, shape, amount, t0, hissGain.gain);
-      // Heavier rain is brighter as well as louder, so the same envelope opens
-      // the top a little. Scaled small: this is weather, not a filter sweep.
+      // The swell scales WITH the level, so the rain still thickens and eases by
+      // the same proportion of itself rather than heaving by a fixed amount.
+      modulate(ctx, sources, shape, amount * NOISE, t0, hissGain.gain);
+      // The BRIGHTNESS does not scale. That is a cutoff, not a level, and
+      // quieter rain is not duller rain — it is the same weather further off.
       modulate(ctx, sources, shape, amount * 2600, t0, lp.frequency);
     }
 
