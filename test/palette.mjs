@@ -223,23 +223,60 @@ console.log('\nchords she chose herself');
   check('bachata offers four chords', BACHATA.progression.length === 4,
     BACHATA.progression.join(','));
   check('and the first is home', BACHATA.progression[0] === 0);
-  check('every other palette stays on one chord',
-    PALETTES.filter((p) => p.key !== 'bachata')
-      .every((p) => (p.progression ?? [0]).length === 1));
+  // WAS: "every other palette stays on one chord". That stopped being true on
+  // 2026-09-21, when the owner asked for the other five to get one too
+  // (chg:five-palettes-get-chords). What replaces it are the invariants that
+  // actually have to hold now that they all move.
+
+  // THE ONE THAT PROTECTS EVERY LINK ALREADY SENT. A track made before this
+  // change stores four zero bytes for its chords, so index 0 is what it decodes
+  // to. If any palette's chord 0 were not home, every beat already shared in
+  // that style would come back transposed — the exact failure
+  // dec:idea-drop-the-auto-progression was written about.
+  check('every palette starts at home',
+    PALETTES.every((p) => (p.progression ?? [0])[0] === 0),
+    PALETTES.map((p) => `${p.key}:${(p.progression ?? [0])[0]}`).join(' '));
+
+  check('every palette names every chord it offers',
+    PALETTES.every((p) => !p.progression || p.chordNames?.length === p.progression.length),
+    PALETTES.map((p) => `${p.key}:${p.progression?.length ?? 0}/${p.chordNames?.length ?? 0}`).join(' '));
+
+  // A PROGRESSION WITH NOTHING FOLLOWING IT IS A SILENT BUTTON. voices.js
+  // `_chordFor` returns 0 for any voice without `transposes`, so a palette that
+  // offers chords and moves no voice would show a control that changes its own
+  // label and nothing else. Exactly one voice, because two transposing voices is
+  // parallel harmony rather than a bass under a floating melody.
+  check('every palette that offers chords moves exactly one voice',
+    PALETTES.every((p) => {
+      const moves = Object.values(p.pitched ?? {}).filter((v) => v.transposes).length;
+      return (p.progression ?? [0]).length < 2 ? moves === 0 : moves === 1;
+    }),
+    PALETTES.map((p) => `${p.key}:${Object.values(p.pitched ?? {}).filter((v) => v.transposes).length}`).join(' '));
+
+  // THE WHOLE-TONE ONE, AND IT IS PALETTE-SPECIFIC. That scale has only two
+  // transpositions: an even offset maps it onto itself, an odd one lands in the
+  // other collection, which shares not one note with this one. Haunted gave up
+  // the reassuring half of the no-wrong-notes promise on purpose; an odd offset
+  // here would give up the protective half by accident.
+  check('the whole-tone palette moves by even offsets only',
+    HAUNTED.progression.every((d) => d % 2 === 0),
+    HAUNTED.progression.join(','));
 
   // THE PROMISE THE AUTOMATIC VERSION BROKE. Every note she can reach must stay
   // consonant over every chord she can choose, or the scale lock is only true
   // at home (dec:idea-drop-the-auto-progression).
   const GRIND = [1, 11];
-  for (let c = 0; c < BACHATA.progression.length; c++) {
-    const shifted = BACHATA.scale.map((d) => (((d - BACHATA.progression[c]) % 12) + 12) % 12);
-    const found = new Set();
-    for (let i = 0; i < shifted.length; i++)
-      for (let j = 0; j < shifted.length; j++)
-        if (i !== j) found.add((((shifted[i] - shifted[j]) % 12) + 12) % 12);
-    const grind = GRIND.filter((h) => found.has(h));
-    check(`over chord ${BACHATA.chordNames[c]}: nothing grinds`, grind.length === 0,
-      grind.length ? `found ${grind.join(',')}` : 'every note is an extension');
+  for (const pal of PALETTES.filter((p) => (p.progression ?? [0]).length > 1)) {
+    for (let c = 0; c < pal.progression.length; c++) {
+      const shifted = pal.scale.map((d) => (((d - pal.progression[c]) % 12) + 12) % 12);
+      const found = new Set();
+      for (let i = 0; i < shifted.length; i++)
+        for (let j = 0; j < shifted.length; j++)
+          if (i !== j) found.add((((shifted[i] - shifted[j]) % 12) + 12) % 12);
+      const grind = GRIND.filter((h) => found.has(h));
+      check(`${pal.key} over ${pal.chordNames[c]}: nothing grinds`, grind.length === 0,
+        grind.length ? `found ${grind.join(',')}` : 'every note is an extension');
+    }
   }
 
   const t = new Track({ bars: 4, palette: BACHATA });
@@ -256,8 +293,11 @@ console.log('\nchords she chose herself');
     t.chordAt(0) === t.chordAt(STEPS_PER_BAR * CHORD_BARS));
   check('and negative positions do not wander', t.chordAt(-STEPS_PER_BAR * CHORD_BARS) === 1);
 
-  // A one-chord palette cannot be talked into having harmony.
-  const p2 = new Track({ bars: 4, palette: PHONK });
+  // A one-chord palette cannot be talked into having harmony. The fixture is
+  // SYNTHETIC on purpose: this used to borrow PHONK, which had one chord until
+  // it was given four, and a guard clause in cycleChord should not stop being
+  // tested because the palette table moved underneath it.
+  const p2 = new Track({ bars: 4, palette: { ...PHONK, progression: [0], chordNames: ['i'] } });
   p2.cycleChord(0);
   check('a palette with one chord ignores the control', p2.chords.every((c) => c === 0));
 

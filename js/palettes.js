@@ -60,6 +60,24 @@ export const PHONK = {
   scaleName: 'minor pentatonic',
 
   /**
+   * THE CHORDS SHE CAN STEP THROUGH, as semitone offsets from home.
+   *
+   * i, ♭VI, ♭VII, ♭III — about as phonk as four chords get, and every one of
+   * them diatonic to the natural minor the pentatonic is cut from.
+   *
+   * CHORD 0 IS 0 AND MUST STAY 0. Every link already sent carries four zero
+   * bytes for its chords, so index 0 is what an existing track decodes to. A
+   * progression that did not start at home would transpose beats she has
+   * already shared, which is the exact failure dec:idea-drop-the-auto-progression
+   * was written about.
+   *
+   * Nothing moves on its own. She chooses, bar by bar, and the loop coming
+   * round is the audition.
+   */
+  progression: [0, 8, 10, 3],
+  chordNames: ['i', '♭VI', '♭VII', '♭III'],
+
+  /**
    * The rounds she has always had. Taken from track.js rather than restated
    * here, so there is exactly one copy of the phonk round list in the project.
    */
@@ -74,7 +92,11 @@ export const PHONK = {
    */
   kit: new URL('../kit/manifest.json', import.meta.url).pathname,
   pitched: {
-    bass: { render: (sr, hz, s, o) => render808(sr, hz, s, o), octaves: 0 },
+    // THE 808 STATES THE CHORD AND THE LEAD DOES NOT, which is the arrangement
+    // bachata already proved: the bass carries the harmony, the pentatonic lead
+    // floats over all four unchanged. Transposing the lead too would hand each
+    // chord its own parallel pentatonic and wander out of the key.
+    bass: { render: (sr, hz, s, o) => render808(sr, hz, s, o), octaves: 0, transposes: true },
     lead: { render: (sr, hz, s, o) => renderLead(sr, hz, s, o), octaves: LEAD_OCTAVES },
   },
   drone: (sr) => renderPad(sr, {}),
@@ -98,6 +120,15 @@ export const CALM = {
   room: CALM_FEEL.room,
   scale: MINOR_PENTATONIC,
   scaleName: 'minor pentatonic',
+
+  /**
+   * i, ♭VII, ♭VI, iv — a modal loop with no leading tone anywhere in it, which
+   * is most of why this idiom sounds like it is floating rather than resolving.
+   *
+   * Chord 0 is home and must stay home; see the phonk table for why.
+   */
+  progression: [0, 10, 8, 5],
+  chordNames: ['i', '♭VII', '♭VI', 'iv'],
 
   /**
    * The same four rounds, doing the same jobs, with the instruments the owner
@@ -163,7 +194,15 @@ export const CALM = {
     bowl: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'bowl', s, o), octaves: 0, sampleRate: 22050, attack: 1.0 },
     vibes: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'vibes', s, o), octaves: 2, sampleRate: 22050, attack: 0.003 },
     crotale: { render: (sr, hz, s, o) => renderIdiophone(sr, hz, 'crotale', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
-    pad: { render: (sr, hz, s, o) => renderPadVoice(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 0.7 },
+    // THE PAD IS THIS PALETTE'S BASS. There is no 808 here, and the pad is the
+    // sustained voice underneath everything, so it is the one that states the
+    // chord while the handpan, bowls and crotales float over it.
+    //
+    // It is also the most expensive voice here to render four times over — a
+    // 0.7s attack means long buffers. The chord loop renders chord 0 for every
+    // voice before it renders chord 1 for any, so the first sound she hears is
+    // not waiting on the other three (ver:time-to-first-sound).
+    pad: { render: (sr, hz, s, o) => renderPadVoice(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 0.7, transposes: true },
     breath: { render: (sr, hz, s, o) => renderBreath(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.6 },
   },
   // The drone is the pad voice held long, on the root, voiced up so a phone can
@@ -205,6 +244,29 @@ export const HAUNTED = {
    */
   scale: WHOLE_TONE,
   scaleName: 'whole tone',
+
+  /**
+   * EVERY OFFSET HERE IS EVEN, AND THAT IS THE WHOLE DESIGN OF IT.
+   *
+   * The whole-tone scale has only TWO transpositions. Move it by an even number
+   * of semitones and it maps onto itself; move it by an odd number and you land
+   * in the other collection, which shares not one note with this one. So even
+   * offsets let the harmony move underneath her while every note she can press
+   * stays inside the same six — the whole-tone equivalent of what the pentatonic
+   * does for the other palettes.
+   *
+   * 4 and 8 are left out for a different reason: the augmented triad this scale
+   * is built from maps onto itself at a major third, so those two would change
+   * the label and not the sound. 2, 6 and 10 all move audibly.
+   *
+   * This palette gave up the REASSURING half of the no-wrong-notes promise on
+   * purpose. It does not follow that it should give up the protective half by
+   * accident, which an odd offset here would do.
+   *
+   * Chord 0 is home and must stay home; see the phonk table for why.
+   */
+  progression: [0, 2, 6, 10],
+  chordNames: ['i', 'II', '♯IV', '♭VII'],
 
   /**
    * SIX LANES OF SCALE BUT STILL FOUR PER ROUND, because the thumbs did not get
@@ -253,7 +315,10 @@ export const HAUNTED = {
     musicbox: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'musicbox', s, o), octaves: 3, sampleRate: 22050, attack: 0.002 },
     tollbell: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'tollbell', s, o), octaves: 1, sampleRate: 22050, attack: 0.005 },
     shard: { render: (sr, hz, s, o) => renderHauntedIdiophone(sr, hz, 'shard', s, o), octaves: 3, sampleRate: 22050, attack: 0.001 },
-    dread: { render: (sr, hz, s, o) => renderDread(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 1.1 },
+    // THE DREAD IS THIS PALETTE'S BASS — the low sustained voice the drone is
+    // also cut from — so it is the one that states the chord while the music
+    // box, the glass and the wail float over it, unmoved.
+    dread: { render: (sr, hz, s, o) => renderDread(sr, hz, s, o), octaves: 1, sampleRate: 22050, attack: 1.1, transposes: true },
     glass: { render: (sr, hz, s, o) => renderGlassHarmonica(sr, hz, s, o), octaves: 2, sampleRate: 22050, attack: 0.95 },
     wail: { render: (sr, hz, s, o) => renderWail(sr, hz, s, o), octaves: 3, sampleRate: 22050, attack: 0.5 },
   },
@@ -289,6 +354,15 @@ export const REGGAETON = {
   room: null,       // close and dry, like the records
   scale: MINOR_PENTATONIC,
   scaleName: 'minor pentatonic',
+
+  /**
+   * i, ♭VI, ♭III, ♭VII — the loop an enormous amount of this music is actually
+   * built on, and it is the same four chords whichever record you pick up.
+   *
+   * Chord 0 is home and must stay home; see the phonk table for why.
+   */
+  progression: [0, 8, 3, 10],
+  chordNames: ['i', '♭VI', '♭III', '♭VII'],
 
   /**
    * THE FIRST PALETTE TO LOCK A RHYTHM, and it is the scale lock's idea applied
@@ -350,7 +424,9 @@ export const REGGAETON = {
    */
   kit: new URL('../kit/manifest.json', import.meta.url).pathname,
   pitched: {
-    bass: { render: (sr, hz, s, o) => render808(sr, hz, s, o), octaves: 0 },
+    // The 808 states the chord; the lead floats. Same arrangement as phonk, and
+    // for the same reason.
+    bass: { render: (sr, hz, s, o) => render808(sr, hz, s, o), octaves: 0, transposes: true },
     lead: { render: (sr, hz, s, o) => renderLead(sr, hz, s, o), octaves: LEAD_OCTAVES },
   },
   drone: (sr) => renderPad(sr, {}),
@@ -508,18 +584,33 @@ export const RITUAL = {
   scaleName: 'minor pentatonic',
 
   /**
-   * NO PROGRESSION, AND IT IS NOT AN OVERSIGHT EITHER.
+   * A PROGRESSION AT LAST — the thing this palette was written without.
    *
-   * This idiom is chord-loop music and the palette should move. It does not,
-   * for the same reason bachata took its automatic version back out
-   * (dec:idea-drop-the-auto-progression): a progression that transposes notes
-   * already recorded is the thing that felt wrong in play. Bachata earned its
-   * chords back by having a player who chooses them; that mechanism
-   * (dec:idea-manual-chords-with-a-pause) is what would finish this palette too,
-   * and it is not built.
+   * This comment used to say "NO PROGRESSION, AND IT IS NOT AN OVERSIGHT
+   * EITHER", on the grounds that the idiom is chord-loop music and should move,
+   * but that the mechanism for moving it safely was not built. IT WAS BUILT.
+   * She chooses the chord per bar, it travels in the link, and nothing ever
+   * transposes a note after she has recorded it. The condition this palette was
+   * waiting on is met (2026-09-21).
    *
-   * So this is the right timbre, the right tempo and a harmony that stays home.
+   * i, ♭VI, iv, ♭VII — a heavy minor loop that stays inside the natural minor
+   * the pentatonic is cut from.
+   *
+   * ⚠️ ASSERTED, NOT MEASURED, AND THAT IS A REAL EXCEPTION HERE.
+   * req:palette-numbers-are-measured says this palette's numbers come off the
+   * MIDI corpus rather than off an ear, and the tempo and the scale fit do. This
+   * progression does NOT. The corpus read on 2026-09-06 could not determine the
+   * KEY of these songs at all — two methods agreed on 10 of 18 files, and
+   * chg:corpus-numbers-measured records that no key is recorded for this palette
+   * on that evidence. A chord loop in scale degrees needs a key to be measured
+   * against, so there is nothing to measure it from. This is a defensible loop
+   * for the idiom, chosen by ear, and it should be replaced the day the key is
+   * established.
+   *
+   * Chord 0 is home and must stay home; see the phonk table for why.
    */
+  progression: [0, 8, 5, 10],
+  chordNames: ['i', '♭VI', 'iv', '♭VII'],
 
   /**
    * FOUR ROUNDS, WHICH IS ALL THERE ARE — track.js throws at any other number.
@@ -618,7 +709,19 @@ export const RITUAL = {
      * 728 at C2, because there is simply twice as much room under Nyquist for a
      * fundamental that low to put them.
      */
-    riff: { render: (sr, hz, s, o) => renderRiff(sr, hz, s, o), octaves: -1, attack: 0.002 },
+    /**
+     * AND IT IS THE VOICE THAT STATES THE CHORD. In this idiom the drop-tuned
+     * riff IS the harmony — the piano and the choir float above it — so it
+     * carries `transposes` while they do not.
+     *
+     * IT IS ALSO THE MOST EXPENSIVE VOICE IN THE PROJECT TO RENDER FOUR TIMES.
+     * It runs at the full context rate rather than 22050 (see above: halving it
+     * would alias the cabinet stage), and a four-chord progression means four
+     * renders of it instead of one. Chord 0 is rendered for every voice before
+     * chord 1 is rendered for any, so the gate still opens on time — but this is
+     * the voice to watch if load ever becomes the complaint.
+     */
+    riff: { render: (sr, hz, s, o) => renderRiff(sr, hz, s, o), octaves: -1, attack: 0.002, transposes: true },
     kick: { render: (sr) => renderRitualKick(sr), octaves: 0, attack: 0.002 },
     snare: { render: (sr) => renderRitualSnare(sr), octaves: 0, attack: 0.002 },
     ghost: { render: (sr) => renderRitualGhost(sr), octaves: 0, attack: 0.002 },
