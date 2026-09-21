@@ -164,10 +164,22 @@ for (const page of PAGES) {
  * — "the first page on the site the generator cannot produce" — and the answer
  * turned out to be a second small table rather than a hand-edited page.
  *
- * /sleep/ IS NOT LISTED, at the owner's word: he asked for rain and waves. It
- * stays a URL he knows rather than a card anyone lands on.
+ * ALL THREE ARE LISTED. /sleep/ was left off when this table was written,
+ * because the owner had asked for rain and waves by name and adding a third
+ * uninvited seemed like the wrong way round. He came back the same day — "please
+ * add the original /sleep/ to the main index, you only added waves and rain" —
+ * so that reading was wrong and this is the correction.
+ *
+ * It goes FIRST because it came first, and because it is the plainest of the
+ * three: no weather, just the hum.
  */
 const BEDS = [
+  {
+    dir: 'sleep',
+    name: 'Sleep',
+    blurb: 'A steady hum, like being in the car. The plain one.',
+    accent: '#8fb8ff',
+  },
   {
     dir: 'waves',
     name: 'Waves',
