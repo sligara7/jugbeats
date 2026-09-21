@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sleep</title>
+
+<!--
+  THE SLEEP PAGE (cmp:sleep-page, proj:baby-sleep).
+
+  A steady noise bed a nine-year-old can turn on for her one-month-old sister.
+  NOT the loop pedal. There is no clock, no track, no rounds, no link codec and
+  nothing to build — none of ../js is loaded, on purpose.
+
+  WHY IT IS BUILT THE WAY IT IS, in one paragraph, because the shape is unusual
+  and looks over-careful until you know what it is for:
+
+  EVERYTHING THAT MATTERS RUNS ON THE AUDIO THREAD. The noise loops, the slow
+  wander, the fade in, the fade out and the stop are all committed to the audio
+  graph the moment she taps a duration. After that NO JAVASCRIPT HAS TO RUN for
+  the rest of the night — which is the whole point, because a backgrounded tab on
+  a locked phone has its timers throttled or stopped (dec:idea-all-night-playback).
+  A setTimeout would not fire. AudioParam automation does. The countdown on screen
+  is cosmetic and may be throttled as much as the browser likes.
+
+  WHAT IT PLAYS, and why not white noise. fact:white-noise-is-the-wrong-colour-for-a-car:
+  "white noise" in the popular writing is a generic term for steady broadband
+  sound, not the acoustic definition. A car cabin — the thing being imitated — is
+  heavily weighted low, somewhere between pink and brown. Three arguments agree
+  on rolling the top off: it sounds like the car, pink beat white across the sleep
+  studies, and the high end is the harsh and hazardous part over hours.
+
+  HOW LOUD. There is no volume control here (dec:idea-how-loud-and-for-how-long).
+  A web page knows its own gain and nothing about the room — not the phone, not
+  the slider, not the distance — so a control here would be a guess dressed as a
+  setting. Instead the output is capped low and the phone's own volume is the only
+  thing anyone has to think about. Distance is the large lever, which is why the
+  placement line is on the first screen and not in a help page nobody opens.
+-->
+
+<meta name="theme-color" content="#07060b">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sleep">
+<meta property="og:description" content="A steady hum to help a baby fall asleep. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/sleep/">
+
+<style>
+  :root { color-scheme: dark; --ink:#efeaf7; --dim:#8d86a3; --accent:#8fb8ff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: #07060b; color: var(--ink);
+    font: 500 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top,0px)) 20px calc(24px + env(safe-area-inset-bottom,0px));
+    text-align: center;
+    transition: background 1.2s;
+  }
+  body.playing { background: #000; }
+
+  h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.02em; font-weight: 600; }
+  .sub { margin: 0 0 4px; color: var(--dim); font-size: 15px; max-width: 22em; }
+
+  /* The placement line. Said before it starts, because distance is the only
+     large lever anyone has over how loud this is where the baby is. */
+  .place {
+    margin: 18px 0 26px; padding: 12px 16px; max-width: 22em;
+    border: 1px solid #ffffff1f; border-radius: 12px;
+    color: var(--accent); font-size: 14px; line-height: 1.45;
+  }
+
+  .label { color: var(--dim); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+
+  .times { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; width: 100%; max-width: 22em; }
+  .times button {
+    appearance: none; font: inherit; font-size: 19px; font-weight: 600;
+    padding: 20px 8px; border-radius: 16px; cursor: pointer;
+    border: 1px solid #ffffff2b; background: #ffffff0d; color: var(--ink);
+    transition: transform .1s, background .15s;
+  }
+  .times button:active { transform: scale(.97); background: #ffffff1a; }
+
+  /* Playing */
+  #playing { display: none; }
+  body.playing #start { display: none; }
+  body.playing #playing { display: block; }
+  .left { font-size: 15px; color: var(--dim); }
+  .clock { font-size: 64px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 10px 0 2px; letter-spacing: -0.02em; }
+  .hint { color: #5d5872; font-size: 14px; margin: 28px 0 0; max-width: 20em; }
+  #stop {
+    appearance: none; font: inherit; font-size: 15px; margin-top: 30px;
+    padding: 13px 30px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #ffffff26; background: transparent; color: var(--dim);
+  }
+  .err { color: #ff90ab; font-size: 14px; margin-top: 18px; min-height: 1em; }
+</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Sleep</h1>
+    <p class="sub">A steady hum, like being in the car.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps playing, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // -------------------------------------------------------------------------
+  // The numbers. All of them are judgements, so they are all in one place.
+  // -------------------------------------------------------------------------
+
+  /** Output ceiling. There is deliberately no control for this — see the header
+   *  comment. Low enough that the phone's own slider is the whole of the answer. */
+  const CEILING = 0.22;
+
+  /** Fade in, so it never arrives as an event in a quiet room. */
+  const FADE_IN = 8;
+
+  /** Fade out. Long, because the end of the sound must not be the thing that
+   *  wakes her — a cut at the end would be an event exactly like a door. */
+  const FADE_OUT = 90;
+
+  /** The two layers. Lengths differ so nothing in the pair lines up twice, and
+   *  both are lowpassed hard: this is a car cabin, not a hiss.
+   *  `cut` is the corner in Hz, `gain` the layer's level into the wander stage. */
+  const LAYERS = [
+    { seconds: 11.7, cut: 320, gain: 1.00 },   // the body — most of the energy
+    { seconds: 13.9, cut: 900, gain: 0.30 },   // a little air over the top
+  ];
+
+  /** The slow wander, so it never sits perfectly still. Both are far below
+   *  anything audible as a rhythm: one cycle is a minute and a half or more. */
+  const WANDER_HZ    = 0.011;   // ~90 s, on level
+  const WANDER_DEPTH = 0.09;
+  const SWEEP_HZ     = 0.007;   // ~2.4 min, on the upper layer's corner
+  const SWEEP_HZ_AMT = 180;
+
+  // -------------------------------------------------------------------------
+
+  let ctx = null, sources = [], keepAlive = null, endsAtMs = 0, ticker = 0;
+
+  /**
+   * Pink noise, crossfaded so the loop point is inaudible.
+   *
+   * Paul Kellet's filter for the -3 dB/octave slope, then a crossfade of the
+   * buffer's tail into its head. Without the crossfade the wrap is a step
+   * discontinuity in the waveform — a soft thump every few seconds, which is
+   * precisely the kind of small repeating event this whole page exists to avoid.
+   */
+  function pinkLoop(seconds, rate) {
+    const n = Math.floor(seconds * rate);
+    const fade = Math.floor(0.4 * rate);
+    const raw = new Float32Array(n + fade);
+
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + w * 0.0555179;
+      b1 = 0.99332 * b1 + w * 0.0750759;
+      b2 = 0.96900 * b2 + w * 0.1538520;
+      b3 = 0.86650 * b3 + w * 0.3104856;
+      b4 = 0.55000 * b4 + w * 0.5329522;
+      b5 = -0.7616 * b5 - w * 0.0168980;
+      raw[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+      b6 = w * 0.115926;
+    }
+
+    const buf = ctx.createBuffer(1, n, rate);
+    const out = buf.getChannelData(0);
+    out.set(raw.subarray(0, n));
+    // Blend what comes after the wrap back over the start, equal-power.
+    for (let i = 0; i < fade; i++) {
+      const t = i / fade;
+      out[i] = out[i] * Math.sqrt(t) + raw[n + i] * Math.sqrt(1 - t);
+    }
+    return buf;
+  }
+
+  /** A very slow oscillator driving `param` around `centre` by `amount`. */
+  function wander(param, centre, amount, hz, startAt) {
+    param.setValueAtTime(centre, startAt);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = hz;
+    const depth = ctx.createGain();
+    depth.gain.value = amount;
+    lfo.connect(depth).connect(param);
+    lfo.start(startAt);
+    sources.push(lfo);
+  }
+
+  function start(minutes) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { fail('This browser cannot play sound.'); return; }
+
+    ctx = new Ctx();
+    ctx.resume();
+
+    const total = minutes * 60;
+    const t0 = ctx.currentTime + 0.05;
+    const end = t0 + total;
+    const rate = ctx.sampleRate;
+
+    // --- the output stage, built back to front -----------------------------
+    // ceiling: fixed, and the only thing touching destination.
+    const ceiling = ctx.createGain();
+    ceiling.gain.value = CEILING;
+    ceiling.connect(ctx.destination);
+
+    // envelope: fade in, hold, fade out. Scheduled ONCE, here, and never
+    // touched again — this is what has to survive the screen going off.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.linearRampToValueAtTime(1, t0 + Math.min(FADE_IN, total / 4));
+    env.gain.setValueAtTime(1, Math.max(t0 + FADE_IN, end - FADE_OUT));
+    env.gain.linearRampToValueAtTime(0.0001, end);
+    env.connect(ceiling);
+
+    // wander: on its own node, because `env` already owns an automation
+    // schedule and two writers on one AudioParam is a fight, not a blend.
+    const drift = ctx.createGain();
+    wander(drift.gain, 1 - WANDER_DEPTH, WANDER_DEPTH, WANDER_HZ, t0);
+    drift.connect(env);
+
+    // --- the layers --------------------------------------------------------
+    LAYERS.forEach((spec, i) => {
+      const src = ctx.createBufferSource();
+      src.buffer = pinkLoop(spec.seconds, rate);
+      src.loop = true;
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 0.7;
+      if (i === LAYERS.length - 1) wander(lp.frequency, spec.cut, SWEEP_HZ_AMT, SWEEP_HZ, t0);
+      else lp.frequency.setValueAtTime(spec.cut, t0);
+
+      const g = ctx.createGain();
+      g.gain.value = spec.gain;
+
+      src.connect(lp).connect(g).connect(drift);
+      src.start(t0);
+      sources.push(src);
+    });
+
+    // Every source is told when to stop, now, for the same reason the envelope
+    // is scheduled now: nothing may depend on this page still running later.
+    sources.forEach((s) => { try { s.stop(end + 0.5); } catch (e) {} });
+
+    keepAlive = silentElement(minutes);
+    endsAtMs = Date.now() + total * 1000;
+    document.body.classList.add('playing');
+    tick();
+    ticker = setInterval(tick, 1000);
+  }
+
+  /**
+   * A silent looping <audio> element and a Media Session, so the OS files this
+   * under "something is playing" rather than "a page is open". This is the usual
+   * lever for surviving the lock screen on iOS, and it is known-fiddly rather
+   * than known-good — it is the thing spike/allnight.html was built to measure,
+   * and that measurement has still not been run overnight.
+   */
+  function silentElement(minutes) {
+    const el = document.createElement('audio');
+    el.loop = true;
+    el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
+    el.volume = 0.001;
+    document.body.appendChild(el);
+    el.play().catch(() => {});
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Sleep', artist: `${minutes} minutes`,
+        });
+        navigator.mediaSession.playbackState = 'playing';
+        navigator.mediaSession.setActionHandler('pause', stop);
+        navigator.mediaSession.setActionHandler('stop', stop);
+      } catch (e) {}
+    }
+    return el;
+  }
+
+  function stop() {
+    clearInterval(ticker);
+    sources.forEach((s) => { try { s.stop(); } catch (e) {} });
+    sources = [];
+    if (keepAlive) { keepAlive.pause(); keepAlive.remove(); keepAlive = null; }
+    if (ctx) { ctx.close(); ctx = null; }
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
+    }
+    document.body.classList.remove('playing');
+  }
+
+  /** Cosmetic only. Read off the wall clock, so a throttled tab catches up
+   *  correctly the moment the screen comes back on. */
+  function tick() {
+    const left = Math.max(0, Math.round((endsAtMs - Date.now()) / 1000));
+    const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+    document.getElementById('clock').textContent =
+      h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+        : `${m}:${String(s).padStart(2, '0')}`;
+    if (left === 0) stop();
+  }
+
+  function fail(msg) { document.getElementById('err').textContent = msg; }
+
+  // -------------------------------------------------------------------------
+
+  document.querySelectorAll('.times button').forEach((b) => {
+    b.addEventListener('click', () => start(Number(b.dataset.min)));
+  });
+  document.getElementById('stop').addEventListener('click', stop);
+
+  // A safety net, not a mechanism: if the OS suspended the context anyway,
+  // coming back to the page resumes it rather than leaving it dead.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state === 'suspended') ctx.resume();
+  });
+})();
+</script>
+</body>
+</html>
