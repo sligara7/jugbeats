@@ -150,10 +150,54 @@ for (const page of PAGES) {
 // The index — the door, generated from the palette table
 // ---------------------------------------------------------------------------
 
+/**
+ * THE BEDS — the pages that are not the game.
+ *
+ * A palette is something she MAKES something with. A bed is something that plays
+ * by itself while somebody sleeps, and they are different enough that the door
+ * says so rather than mixing them into one list: nothing here has keys, a tempo
+ * or a link, and none of it is hers.
+ *
+ * WRITTEN OUT HERE RATHER THAN DERIVED, because a bed is not a palette and
+ * inventing a fake one to get it onto this page would be the tail wagging the
+ * dog. dec:idea-a-sleep-url recorded this as the one snag in giving a bed a home
+ * — "the first page on the site the generator cannot produce" — and the answer
+ * turned out to be a second small table rather than a hand-edited page.
+ *
+ * /sleep/ IS NOT LISTED, at the owner's word: he asked for rain and waves. It
+ * stays a URL he knows rather than a card anyone lands on.
+ */
+const BEDS = [
+  {
+    dir: 'waves',
+    name: 'Waves',
+    blurb: 'Slow surf, a long way off. Pick how long and put the phone down.',
+    accent: '#7fd6ff',
+  },
+  {
+    dir: 'rain',
+    name: 'Rain',
+    blurb: 'Steady rain, heard through a window. It fades out on its own.',
+    accent: '#9fb9cc',
+  },
+];
+
 const cards = PALETTES.map((p) => `      <a class="card" href="${p.home}" style="--accent:${p.accent}">
         <h2>${p.name}</h2>
         <p>${p.blurb}</p>
         <span class="go">open ▸</span>
+      </a>`).join('\n');
+
+/** Spelled out, because "6 kinds of music" reads like a spreadsheet. Derived
+ *  rather than written, because this line said "five" for as long as there were
+ *  six and nobody noticed. */
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const countWord = (n) => WORDS[n] ?? String(n);
+
+const bedCards = BEDS.map((b) => `      <a class="card" href="${b.dir}/" style="--accent:${b.accent}">
+        <h2>${b.name}</h2>
+        <p>${b.blurb}</p>
+        <span class="go">open \u25b8</span>
       </a>`).join('\n');
 
 // The id-to-directory map the redirect needs, small enough to inline.
@@ -211,6 +255,8 @@ writeFileSync(join(ROOT, 'index.html'), `<!doctype html>
     -webkit-text-size-adjust:100%;
   }
   header { max-width:52rem; margin:0 auto 26px; }
+  header.second { margin-top:44px; }
+  header.second h1 { font-size:clamp(22px,4.5vw,30px); }
   h1 { margin:0 0 6px; font-size:clamp(30px,7vw,46px); letter-spacing:-0.02em; }
   .sub { margin:0; opacity:0.55; font-size:15px; max-width:30em; }
   .grid {
@@ -237,11 +283,21 @@ writeFileSync(join(ROOT, 'index.html'), `<!doctype html>
   <header>
     <h1>Jug</h1>
     <p class="sub">Turn your phone sideways, tap two big keys, and build a track a
-      layer at a time. Same game, five kinds of music.</p>
+      layer at a time. Same game, ${countWord(PALETTES.length)} kinds of music.</p>
   </header>
 
   <main class="grid">
 ${cards}
+  </main>
+
+  <header class="second">
+    <h1>To fall asleep to</h1>
+    <p class="sub">Nothing to play. Choose how long, put the phone across the
+      room, and it stops on its own.</p>
+  </header>
+
+  <main class="grid">
+${bedCards}
   </main>
 
   <footer>
