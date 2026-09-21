@@ -150,15 +150,24 @@ const NOISE = 0.45;
  * first balanced, to 0.79 — loud enough to start reading as ticking rather than
  * as rain.
  *
- * AND IT HAPPENED AGAIN when the awning arrived: the surface lifted them to 0.96
- * of the hiss without a number of theirs changing. 0.383 is what puts the ratio
- * back to 0.57, which is where his ear left it.
+ * IT HAPPENED AGAIN when the awning arrived: the surface lifted them to 0.96 of
+ * the hiss without a number of theirs changing, and 0.383 pulled them back.
+ *
+ * AND THEN IT REVERSED. Restoring the original bright drops means the awning's
+ * lowpass now does to them what it was always supposed to do — muffle the splat
+ * — and muffling costs level. The same drops that needed 0.383 to sit still now
+ * need 0.976. The number moved by a factor of two and a half while the ratio it
+ * is there to hold, 0.57, never moved at all.
+ *
+ * WHICH IS THE ARGUMENT FOR HAVING THIS DIAL AT ALL. Four times now a level
+ * nobody touched has moved because something around it changed. The ratio is the
+ * thing his ear set; this number is just whatever arithmetic holds it.
  *
  * THAT IS WHY THIS IS ITS OWN DIAL RATHER THAN A NUMBER FOLDED INTO THE LEVELS
  * ABOVE. Every measured figure in this file is stated before its multiplier, so
  * moving one of the three — noise, drops, density — never silently moves another.
  */
-const DROPS = 0.383;
+const DROPS = 0.976;
 
 /**
  * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
@@ -424,15 +433,28 @@ runBed({
     // big ones further off. Their patterns drift apart and never realign.
     const near = ctx.createBufferSource();
     near.buffer = dropLoop(ctx, {
-      // LOWER AND LONGER THAN A DROP ON STONE. On canvas the impact does not
-      // click, it thumps, and the cloth holds the note for a moment afterwards.
-      seconds: 19.7, perSecond: 13, hzLow: 260, hzHigh: 1300, decay: 0.020, level: 2.2,
+      // THE ORIGINAL STRIKE, RESTORED. These were briefly retuned low and long
+      // — 260-1300 Hz over 20ms — on the theory that canvas makes a drop thump
+      // rather than click. It made them METALLIC, and the owner heard it at once:
+      // "almost digital... the raindrop sounds that we started with were actually
+      // pretty good".
+      //
+      // WHY, MEASURED: a resonator at 0.006 rings for 31ms and one at 0.020 rings
+      // for 101ms, and both are about 62 cycles. The cycle count is not what
+      // changed — the DURATION is. Under about 40ms the ear takes a resonance as
+      // a transient; over 100ms it has time to hear a PITCH, and a pitched ping
+      // is a bell, not a raindrop.
+      //
+      // AND THE SURFACE WAS ALREADY DOING THAT JOB. The awning's peaks are the
+      // body; a drop only ever needed to be the strike. Ringing both was
+      // resonating twice, which is exactly what metal sounds like.
+      seconds: 19.7, perSecond: 13, hzLow: 900, hzHigh: 4200, decay: 0.006, level: 2.2,
     });
     near.loop = true;
 
     const far = ctx.createBufferSource();
     far.buffer = dropLoop(ctx, {
-      seconds: 23.3, perSecond: 3.5, hzLow: 110, hzHigh: 430, decay: 0.045, level: 1.6,
+      seconds: 23.3, perSecond: 3.5, hzLow: 320, hzHigh: 1100, decay: 0.016, level: 1.6,
     });
     far.loop = true;
 
