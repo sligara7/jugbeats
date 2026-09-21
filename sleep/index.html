@@ -162,7 +162,42 @@
 
   // -------------------------------------------------------------------------
 
-  let ctx = null, sources = [], keepAlive = null, endsAtMs = 0, ticker = 0;
+  let ctx = null, sources = [], keepAlive = null, endsAtMs = 0, ticker = 0, silenceUrl = null;
+
+  /**
+   * Two seconds of REAL silence, built here rather than pasted in as a data URI.
+   *
+   * THE ONE THIS REPLACED HAD NO SAMPLES IN IT — 44 bytes of WAV header with a
+   * zero-length data chunk, carried over verbatim from spike/allnight.html and
+   * decoded on 2026-09-21 (fact:the-silent-wav-has-no-audio-in-it). A resource
+   * with no audio in it has nothing to loop, so the element never durably plays,
+   * and an element that is not playing gives iOS no reason to file this tab
+   * under media playback. That element is the WHOLE iOS mechanism, so it was a
+   * no-op sitting where the mechanism was supposed to be.
+   *
+   * Android never revealed it, because Chrome keeps a backgrounded AudioContext
+   * alive without needing the lever at all.
+   */
+  function makeSilence(seconds, rate) {
+    const frames = seconds * rate;                 // 8-bit unsigned PCM, mono
+    const bytes = new Uint8Array(44 + frames);
+    const view = new DataView(bytes.buffer);
+    const ascii = (at, s) => { for (let i = 0; i < s.length; i++) bytes[at + i] = s.charCodeAt(i); };
+
+    ascii(0, 'RIFF');       view.setUint32(4, 36 + frames, true);
+    ascii(8, 'WAVEfmt ');   view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);                   // PCM
+    view.setUint16(22, 1, true);                   // mono
+    view.setUint32(24, rate, true);                // sample rate
+    view.setUint32(28, rate, true);                // byte rate
+    view.setUint16(32, 1, true);                   // block align
+    view.setUint16(34, 8, true);                   // bits per sample
+    ascii(36, 'data');      view.setUint32(40, frames, true);
+
+    // Silence in 8-bit unsigned PCM is 128. Zero would be full-scale negative.
+    bytes.fill(128, 44);
+    return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+  }
 
   /**
    * Pink noise, crossfaded so the loop point is inaudible.
@@ -216,6 +251,12 @@
   function start(minutes) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) { fail('This browser cannot play sound.'); return; }
+
+    // Safari lets a page say outright that it is playback audio rather than
+    // leaving the OS to infer it from a silent element. Newer than the spike
+    // this page inherited its lock-screen handling from, and the most direct
+    // way to ask iOS for the treatment this whole page depends on.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
 
     ctx = new Ctx();
     ctx.resume();
@@ -287,8 +328,10 @@
   function silentElement(minutes) {
     const el = document.createElement('audio');
     el.loop = true;
-    el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
+    silenceUrl = makeSilence(2, 8000);
+    el.src = silenceUrl;
     el.volume = 0.001;
+    el.setAttribute('playsinline', '');
     document.body.appendChild(el);
     el.play().catch(() => {});
     if ('mediaSession' in navigator) {
@@ -309,6 +352,7 @@
     sources.forEach((s) => { try { s.stop(); } catch (e) {} });
     sources = [];
     if (keepAlive) { keepAlive.pause(); keepAlive.remove(); keepAlive = null; }
+    if (silenceUrl) { URL.revokeObjectURL(silenceUrl); silenceUrl = null; }
     if (ctx) { ctx.close(); ctx = null; }
     if ('mediaSession' in navigator) {
       try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
