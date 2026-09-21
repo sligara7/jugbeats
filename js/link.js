@@ -425,7 +425,83 @@ function decodeV1(bytes, palette) {
 }
 
 /** Every decoder we have ever shipped, keyed by version. Nothing leaves. */
-const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5, 6: decodeV6, 7: decodeV7 };
+// ---------------------------------------------------------------------------
+// v9 — the shift she played each note at
+// ---------------------------------------------------------------------------
+//
+// New in v9 over v7: a SPARSE TABLE on the end, one entry per note that was
+// played with a thumb away from home. Everything before it is a v7 payload,
+// byte for byte, so decodeV7 reads it verbatim and only the tail is new.
+//
+// WHY SPARSE, AND WHY IT IS THE WHOLE DESIGN. The alternative was to widen the
+// note bitmap so every note could carry a pitch, which costs every track the
+// same whether or not anybody ever touches an arrow — 32 bytes a round becoming
+// 64, unconditionally. A table of exceptions costs ONE BYTE on a track nobody
+// has shifted. That is the same bargain v8 struck for songs, in its own words:
+// nobody pays for a feature they do not use.
+//
+// AND `encode` STILL EMITS v7 WHEN THE TABLE WOULD BE EMPTY, so the common link
+// is not merely the same size as before — it is the same BYTES as before.
+//
+// Each entry is two bytes: round index and lane packed into the first, slot in
+// the second, and the shift in the high nibble of the first as a signed nibble.
+// A shift is always within [DEGREE_FLOOR, DEGREE_CEIL] span, which fits.
+
+const V9_VERSION = 9;
+
+/** Signed nibble, so a shift of -2 survives a byte. */
+const toNibble = (v) => v & 0x0f;
+const fromNibble = (v) => ((v & 0x0f) ^ 0x08) - 0x08;
+
+function shiftEntries(track) {
+  const out = [];
+  track.rounds.forEach((round, ri) => {
+    for (const { slot, lane, shift } of track.notes(round.id)) {
+      if (shift) out.push({ ri, lane, slot, shift });
+    }
+  });
+  return out;
+}
+
+function encodeV9(track) {
+  const body = encodeV7(track);
+  const entries = shiftEntries(track);
+  const out = new Uint8Array(body.length + 1 + entries.length * 2);
+  out.set(body, 0);
+  out[0] = V9_VERSION;
+  let p = body.length;
+  out[p++] = Math.min(255, entries.length);
+  for (const e of entries.slice(0, 255)) {
+    out[p++] = (toNibble(e.shift) << 4) | ((e.ri & 0x03) << 2) | (e.lane & 0x03);
+    out[p++] = e.slot & 0xff;
+  }
+  return out;
+}
+
+function decodeV9(bytes, palette) {
+  const track = decodeV7(bytes, palette);
+  if (!track) return null;
+  const at = v7Length(bytes, 0, track.rounds.length);
+  const count = bytes[at] ?? 0;
+  let p = at + 1;
+  for (let i = 0; i < count; i++) {
+    const a = bytes[p++];
+    const slot = bytes[p++];
+    if (a === undefined || slot === undefined) break;
+    const round = track.rounds[(a >> 2) & 0x03];
+    const lane = a & 0x03;
+    const shift = fromNibble(a >> 4);
+    // A note the bitmap does not hold would be a shift with nothing to shift, so
+    // it is dropped rather than inventing a note nobody played.
+    const bit = slot * LANE_STRIDE + lane;
+    if (round && shift && track.events[round.id]?.has(bit)) {
+      track.noteShift[round.id].set(bit, shift);
+    }
+  }
+  return track;
+}
+
+const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decodeV5, 6: decodeV6, 7: decodeV7, 9: decodeV9 };
 
 // ---------------------------------------------------------------------------
 // v8 — a SONG: unique segments, and an order that indexes them
@@ -453,6 +529,21 @@ const DECODERS = { 1: decodeV1, 2: decodeV2, 3: decodeV3, 4: decodeV4, 5: decode
 
 const SONG_VERSION = 8;
 
+/**
+ * How many bytes ONE SEGMENT occupies, whatever version it is.
+ *
+ * A v9 segment is a v7 payload plus a count and its entries, so its length is
+ * computable from the same header plus one byte read at a known place. This
+ * dispatches rather than assuming v7, because a song whose segments carry shifts
+ * would otherwise be walked with the wrong stride and every segment after the
+ * first would decode as noise.
+ */
+function segmentLength(bytes, at, rounds) {
+  const body = v7Length(bytes, at, rounds);
+  if (bytes[at] !== V9_VERSION) return body;
+  return body + 1 + (bytes[at + body] ?? 0) * 2;
+}
+
 /** How many bytes a v7 payload occupies, read from its own header. Computed the
  *  same way decodeV7 computes its chord offset, so the two cannot disagree. */
 function v7Length(bytes, at, rounds) {
@@ -468,7 +559,9 @@ export function encodeSong(song) {
   // never makes a second section never pays for the feature.
   if (song.isSingle) return encode(song.segments[0]);
 
-  const parts = song.segments.map((t) => encodeV7(t));
+  // A segment that carries shifts is written as v9, exactly as a lone track
+  // would be; the rest stay v7 and stay the length they have always been.
+  const parts = song.segments.map((t) => (shiftEntries(t).length ? encodeV9(t) : encodeV7(t)));
   const total = 3 + song.order.length + parts.reduce((n, b) => n + b.length, 0);
   const out = new Uint8Array(total);
   let p = 0;
@@ -499,8 +592,9 @@ export function decodeSong(str, palette) {
     const rounds = palette.rounds.length;
     const segments = [];
     for (let i = 0; i < count; i++) {
-      const len = v7Length(bytes, p, rounds);
-      const seg = decodeV7(bytes.subarray(p, p + len), palette);
+      const len = segmentLength(bytes, p, rounds);
+      const part = bytes.subarray(p, p + len);
+      const seg = part[0] === V9_VERSION ? decodeV9(part, palette) : decodeV7(part, palette);
       if (!seg) return null;
       segments.push(seg);
       p += len;
@@ -528,7 +622,9 @@ export function songFromLocation(palette) {
 // ---------------------------------------------------------------------------
 
 export function encode(track) {
-  return toB64Url(encodeV7(track));
+  // A track nobody has shifted encodes EXACTLY as it always has — same version,
+  // same bytes, same length. The feature costs nothing until it is used.
+  return toB64Url(shiftEntries(track).length ? encodeV9(track) : encodeV7(track));
 }
 
 /**
@@ -619,4 +715,4 @@ export async function share(what, { title = 'Listen to my beat', base } = {}) {
   }
 }
 
-export const _internal = { encodeV7, decodeV7, decodeV6, decodeV5, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION };
+export const _internal = { encodeV7, decodeV7, encodeV9, decodeV9, decodeV6, decodeV5, decodeV4, decodeV3, decodeV2, decodeV1, toB64Url, fromB64Url, VERSION, V9_VERSION, segmentLength };

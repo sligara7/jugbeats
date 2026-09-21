@@ -262,5 +262,131 @@ console.log('\ndifferent loop lengths survive the round trip');
     b2.lanesAt('r1', 88).length === 1, `bars ${b2.barsFor('r1')}`);
 }
 
+console.log('\nthe shift she played each note at');
+
+{
+  const { REGGAETON } = await import('../js/palettes.js');
+  const { DEGREE_FLOOR, DEGREE_CEIL } = await import('../js/track.js');
+  const { encodeSong, decodeSong, _internal } = await import('../js/link.js');
+  const { Song } = await import('../js/song.js');
+
+  // r3 is the bass: lanes at degrees 0,2,3,4, split 0,1 | 2,3 between thumbs.
+  const fresh = () => new Track({ bars: 4, palette: REGGAETON });
+
+  // THE PROMISE THE WHOLE FEATURE RESTS ON, and the reason the owner chose a
+  // per-note shift over a per-round one: moving a thumb changes what she plays
+  // NEXT and never what she has already played. An earlier automatic version
+  // transposed notes underneath her and had to be taken back out
+  // (dec:idea-drop-the-auto-progression); this is the test that it cannot recur.
+  {
+    const t = fresh();
+    t.record('r3', 3, 0);
+    const before = t.notes('r3').map((n) => `${n.slot}:${n.lane}:${n.shift}`).join(' ');
+    t.nudgeShift('r3', 1, 2);
+    const after = t.notes('r3').map((n) => `${n.slot}:${n.lane}:${n.shift}`).join(' ');
+    check('moving a thumb leaves recorded notes alone', before === after, `${before} -> ${after}`);
+
+    t.record('r3', 3, 16);
+    const shifts = t.notes('r3').sort((a, b) => a.slot - b.slot).map((n) => n.shift);
+    check('and the next note carries the new shift', shifts.join(',') === '0,2', shifts.join(','));
+  }
+
+  // A thumb stops where its own lanes run out of rendered range, not at a flat
+  // number — the pair moves together, so the highest lane decides the ceiling.
+  {
+    const t = fresh();
+    let last = 0;
+    for (let i = 0; i < 9; i++) last = t.nudgeShift('r3', 1, 1);
+    check('the right thumb clamps at its own ceiling',
+      last === DEGREE_CEIL - 4, `stopped at ${last}`);
+    let low = 0;
+    for (let i = 0; i < 9; i++) low = t.nudgeShift('r3', 0, -1);
+    check('the left thumb clamps at its own floor',
+      low === DEGREE_FLOOR - 0, `stopped at ${low}`);
+    check('a drum round cannot shift at all', t.nudgeShift('r1', 0, 1) === 0);
+  }
+
+  // NOBODY PAYS FOR A FEATURE THEY DO NOT USE. A track with no shift must encode
+  // as the version it always did, byte for byte — not merely to the same length.
+  {
+    const t = fresh();
+    t.record('r3', 0, 0);
+    t.record('r3', 2, 8);
+    t.accept('r3');
+    const bytes = _internal.fromB64Url(encode(t));
+    check('an unshifted track is still v7', bytes[0] === 7, `version ${bytes[0]}`);
+
+    t.nudgeShift('r3', 1, 2);
+    t.record('r3', 3, 16);
+    const shifted = _internal.fromB64Url(encode(t));
+    check('a shifted track is v9', shifted[0] === 9, `version ${shifted[0]}`);
+    check('and the table costs 3 bytes for one shifted note',
+      shifted.length === bytes.length + 3, `${shifted.length - bytes.length} bytes`);
+  }
+
+  // AND IT TRAVELS.
+  {
+    const t = fresh();
+    t.nudgeShift('r3', 1, 3);
+    t.record('r3', 3, 4);
+    t.nudgeShift('r3', 0, -2);
+    t.record('r3', 0, 12);
+    t.record('r3', 2, 20);          // right thumb, still at +3
+    t.accept('r3');
+
+    const back = decode(encode(t), REGGAETON);
+    const shape = (x) => x.notes('r3').sort((a, b) => a.slot - b.slot)
+      .map((n) => `${n.slot}/${n.lane}/${n.shift}`).join(' ');
+    check('every shift survives the link', shape(back) === shape(t), shape(back));
+    // A note played while the OTHER thumb was moved must come back at home,
+    // or the table is leaking shifts across the pair.
+    const t2 = fresh();
+    t2.nudgeShift('r3', 1, 3);      // right thumb only
+    t2.record('r3', 0, 0);          // left-thumb lane, untouched
+    t2.record('r3', 3, 8);          // right-thumb lane, shifted
+    const r2 = decode(encode(t2), REGGAETON).notes('r3').sort((a, b) => a.slot - b.slot);
+    check('a shift does not leak to the other thumb',
+      r2[0].shift === 0 && r2[1].shift === 3,
+      r2.map((n) => `${n.lane}:${n.shift}`).join(' '));
+  }
+
+  // A SONG IS SEGMENTS BACK TO BACK, so a v9 segment must not throw the walk off
+  // — every segment after it would otherwise decode as noise.
+  {
+    const a = fresh();
+    a.nudgeShift('r3', 1, 2);
+    a.record('r3', 3, 0);
+    a.accept('r3');
+    const b = fresh();
+    b.record('r3', 0, 8);
+    b.accept('r3');
+
+    const song = new Song({ segments: [a, b], order: [0, 1, 0] });
+    const back = decodeSong(encodeSong(song), REGGAETON);
+    check('a song walks past a shifted segment', back?.segments.length === 2,
+      `${back?.segments.length} segment(s)`);
+    check('the shifted segment keeps its shift',
+      back?.segments[0].notes('r3')[0]?.shift === 2,
+      `${back?.segments[0].notes('r3')[0]?.shift}`);
+    check('and the segment after it is intact',
+      back?.segments[1].notes('r3')[0]?.slot === 8,
+      `slot ${back?.segments[1].notes('r3')[0]?.slot}`);
+    check('and the order survives', back?.order.join(',') === '0,1,0', back?.order.join(','));
+  }
+
+  // Erasing a note must take its shift with it, or a later note recorded on the
+  // same slot and lane would inherit a pitch nobody chose.
+  {
+    const t = fresh();
+    t.nudgeShift('r3', 1, 2);
+    const slot = t.record('r3', 3, 0);
+    t.erase('r3', 3, slot);
+    t.nudgeShift('r3', 1, -2);
+    t.record('r3', 3, 0);
+    check('erasing a note forgets its shift',
+      t.notes('r3')[0]?.shift === 0, `${t.notes('r3')[0]?.shift}`);
+  }
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failure(s)\n`);
 process.exit(failures === 0 ? 0 : 1);

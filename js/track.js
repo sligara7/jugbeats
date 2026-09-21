@@ -28,6 +28,22 @@ export { PROGRESSION };
 export const CHORD_BARS = 4;
 
 /**
+ * HOW FAR AN ARROW MAY CARRY A THUMB, as scale degrees either side of home.
+ *
+ * A bound is not optional here. Degrees run off the top of the scale into the
+ * next octave without limit (degreeToHz), so unbounded arrows would eventually
+ * put the bass above the melody — and every reachable degree has to be RENDERED
+ * before she can press it, so an unbounded range is an unbounded buffer count.
+ *
+ * -2 to +7 is a little over an octave and a half of the pentatonic, which is
+ * more range than four keys have ever had. The floor is below zero on purpose:
+ * the owner drew a down-arrow on ROOT, and a control that refuses on the key it
+ * was drawn on is a control that looks broken.
+ */
+export const DEGREE_FLOOR = -2;
+export const DEGREE_CEIL = 7;
+
+/**
  * The most lanes any round has. Used as a fixed STRIDE when packing notes, so
  * every round encodes the same way whether it has two lanes or four — a couple
  * of wasted bits per step buys one code path and one link format.
@@ -270,6 +286,30 @@ export class Track {
     /** events[roundId] = Set of "slot*LANE_STRIDE + lane". A Set so a double tap on
      *  the same slot is idempotent rather than a stack of identical notes. */
     this.events = Object.fromEntries(this.rounds.map((r) => [r.id, new Set()]));
+
+    /**
+     * WHERE EACH THUMB IS SITTING RIGHT NOW — shift[roundId] = [left, right], in
+     * scale degrees. This is the position of a CONTROL, not part of the music:
+     * it decides what the next note she plays will sound, and nothing else.
+     * It is deliberately NOT sent in the link, because a track is what she
+     * played rather than where the arrows happened to be when she stopped.
+     */
+    this.shift = Object.fromEntries(this.rounds.map((r) => [r.id, [0, 0]]));
+
+    /**
+     * WHAT EACH NOTE WAS PLAYED AT — noteShift[roundId] = Map from the note's own
+     * key to the shift in force when she recorded it.
+     *
+     * THIS IS THE HALF THAT IS THE MUSIC, and it is why the arrows do not repeat
+     * dec:idea-drop-the-auto-progression. A note remembers its own pitch, so
+     * moving a thumb afterwards changes what she plays NEXT and never what she
+     * has already played. The owner chose this over a per-round transpose for
+     * exactly that reason.
+     *
+     * Sparse on purpose: a note at home stores nothing, so a track nobody has
+     * shifted carries no shift data at all and encodes as a plain v7 link.
+     */
+    this.noteShift = Object.fromEntries(this.rounds.map((r) => [r.id, new Map()]));
     /** Which rounds she has accepted with STOP. Only these play back. */
     this.accepted = new Set();
 
@@ -353,6 +393,63 @@ export class Track {
   /** One round by id. */
   roundById(roundId) { return this.rounds.find((r) => r.id === roundId); }
 
+  /**
+   * WHICH THUMB A LANE BELONGS TO — 0 for the left hand, 1 for the right.
+   *
+   * The lanes of a round are laid out left to right across the screen and split
+   * down the middle, which is what "the right side instruments" means when the
+   * phone is sideways and there is a thumb at each end.
+   */
+  thumbOf(roundId, lane) {
+    return lane < this.laneCount(roundId) / 2 ? 0 : 1;
+  }
+
+  /** The degree a lane sounds at rest, before any arrow has touched it. */
+  baseDegree(roundId, lane) {
+    return this.roundById(roundId)?.lanes?.[lane]?.degree;
+  }
+
+  /** Where a thumb is sitting now. */
+  shiftFor(roundId, thumb) {
+    return this.shift[roundId]?.[thumb] ?? 0;
+  }
+
+  /**
+   * Move a thumb, and answer where it ended up.
+   *
+   * CLAMPED BY THE LANES THEMSELVES rather than by a flat number: the pair moves
+   * only as far as its highest lane can go without leaving the rendered range,
+   * and only as low as its lowest can. So a thumb whose keys already sit high
+   * stops sooner than one down at the root, which is what a player would expect
+   * and what keeps every reachable degree something the renderer has built.
+   *
+   * A round with no pitched lanes — the drums — cannot shift at all.
+   */
+  nudgeShift(roundId, thumb, by = 1) {
+    const round = this.roundById(roundId);
+    if (!round) return 0;
+    const lanes = round.lanes
+      .map((l, i) => ({ ...l, i }))
+      .filter((l) => l.degree !== undefined && this.thumbOf(roundId, l.i) === thumb);
+    if (!lanes.length) return this.shiftFor(roundId, thumb);
+
+    const highest = Math.max(...lanes.map((l) => l.degree));
+    const lowest = Math.min(...lanes.map((l) => l.degree));
+    const max = DEGREE_CEIL - highest;
+    const min = DEGREE_FLOOR - lowest;
+
+    const next = Math.max(min, Math.min(max, this.shiftFor(roundId, thumb) + by));
+    this.shift[roundId][thumb] = next;
+    return next;
+  }
+
+  /** What a note actually sounds: its lane's degree plus the shift it was
+   *  played at. Undefined for a lane that has no pitch — a drum. */
+  degreeOf(roundId, lane, shift = 0) {
+    const base = this.baseDegree(roundId, lane);
+    return base === undefined ? undefined : base + shift;
+  }
+
   /** How many keys this round puts under her thumbs. */
   laneCount(roundId) { return this.roundById(roundId)?.lanes.length ?? 0; }
 
@@ -429,7 +526,18 @@ export class Track {
   record(roundId, lane, atStep) {
     const loop = this.loopStepsFor(roundId);
     const slot = ((quantise(atStep, this.gridFor(roundId)) % loop) + loop) % loop;
-    this.events[roundId]?.add(slot * LANE_STRIDE + lane);
+    const bit = slot * LANE_STRIDE + lane;
+    this.events[roundId]?.add(bit);
+
+    // THE SHIFT IS BAKED IN HERE, at the moment she plays it, and never read
+    // again from the control. That is the whole of the promise that moving a
+    // thumb afterwards cannot disturb what she has already recorded.
+    const s = this.baseDegree(roundId, lane) === undefined
+      ? 0
+      : this.shiftFor(roundId, this.thumbOf(roundId, lane));
+    if (s) this.noteShift[roundId]?.set(bit, s);
+    else this.noteShift[roundId]?.delete(bit);
+
     return slot;
   }
 
@@ -440,6 +548,7 @@ export class Track {
       throw new RangeError(`step ${slot} outside this round's loop`);
     }
     this.events[roundId]?.delete(slot * LANE_STRIDE + lane);
+    this.noteShift[roundId]?.delete(slot * LANE_STRIDE + lane);
   }
 
   lanesAt(roundId, slot) {
@@ -464,7 +573,9 @@ export class Track {
       const slot = Math.floor(v / LANE_STRIDE);
       // A note on an in-between step is kept but not reported while the round
       // is coarse, so coarsening never destroys anything.
-      if (slot < loop && onGrid(slot, grid)) out.push({ slot, lane: v % LANE_STRIDE });
+      if (slot < loop && onGrid(slot, grid)) {
+        out.push({ slot, lane: v % LANE_STRIDE, shift: this.noteShift[roundId]?.get(v) ?? 0 });
+      }
     }
     return out;
   }

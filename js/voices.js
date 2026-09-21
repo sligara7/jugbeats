@@ -50,6 +50,19 @@ const degrees = (palette) => {
   return [...used].sort((a, b) => a - b);
 };
 
+// ⚠️ THE SHIFT RANGE IS NOT RENDERED HERE, AND THAT IS A MEASURED DECISION.
+//
+// Track.nudgeShift can carry a thumb to any degree in [DEGREE_FLOOR, DEGREE_CEIL],
+// and rendering all of them eagerly was tried and reverted on 2026-09-21: it took
+// ritual from 222 buffers and ~33 MB to 370 and ~55 MB, on a device whose whole
+// virtue is that it opens from a link on a phone (ver:time-to-first-sound).
+//
+// A shifted degree must therefore be rendered ON DEMAND, when a thumb first
+// reaches it, which is playback work and belongs with the arrows in stage 2.
+// UNTIL THAT EXISTS, A SHIFTED NOTE WOULD FIND NO BUFFER AND FALL SILENT — there
+// is no UI that can shift yet, so nothing can reach it, and the invariant test in
+// test/voices.mjs still passes because every LANE degree is still rendered.
+
 /** Exposed so test/voices.mjs can hold the invariant above. */
 export const _degreesFor = degrees;
 
