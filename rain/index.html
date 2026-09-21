@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rain</title>
+
+<!--
+  THE RAIN PAGE — the third bed, and the first one built on the shared engine.
+//
+  WHAT MAKES RAIN RAIN, AND NOT JUST BRIGHTER SURF. A wave is one slow shape
+  arriving over ten seconds. Rain is the opposite: a steady bed of countless
+  impacts too small to hear individually, with DISCRETE DROPS picked out on top
+  of it. Take the drops away and you have hiss; take the hiss away and you have a
+  dripping tap. It needs both, and the drops are the part that says "rain".
+
+  AND THE DROPS CANNOT BE SCHEDULED. Every bed here rests on no JavaScript
+  running after the tap, because a backgrounded tab on a locked phone has its
+  timers stopped — so a drop cannot be a timer, and eight hours of individually
+  scheduled drops is hundreds of thousands of events.
+
+  SO THE DROPS ARE BAKED INTO THE BUFFER AND THE BUFFER LOOPS. Twenty seconds of
+  rain with two hundred-odd drops already in it, played on repeat, needs nothing
+  to keep going. Two of them at coprime lengths never line up the same way, so
+  the pattern does not repeat audibly — the same trick the waves use for their
+  swell and the game uses for its round lengths.
+
+  A DROP THAT STRADDLES THE END WRAPS AROUND TO THE START, which is what makes
+  the loop seamless. There is no crossfade here and none is needed: the drops are
+  written modulo the buffer length, so the last one simply finishes at the
+  beginning, exactly as it would have done if the buffer were longer.
+
+  KEPT DELIBERATELY DARKER THAN REAL RAIN. Rain has far more high-frequency
+  energy than the car cabin the first bed imitated, and the high end is both the
+  harsh part over hours and the part that carries the exposure risk
+  (dec:idea-how-loud-and-for-how-long). The top is rolled off at 5.5 kHz and the
+  ceiling sits below the other two, so this is rain heard through a window rather
+  than rain on your face.
+-->
+
+<meta name="theme-color" content="#080a0c">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Rain">
+<meta property="og:description" content="Steady rain to fall asleep to. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/rain/">
+
+<link rel="stylesheet" href="../css/bed.css">
+<style>:root { --accent: #9fb9cc; --bg: #080a0c; }</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Rain</h1>
+    <p class="sub">Steady rain, heard through a window.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script type="module">
+import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer } from '../js/bed.js';
+
+/** Below the other two beds. Rain is brighter, and brighter reads louder. */
+const CEILING = 0.18;
+
+/** Where the top is rolled off. Real rain goes far higher; over eight hours
+ *  beside a sleeping baby, higher is the part that turns harsh. */
+const TOP = 5500;
+
+/**
+ * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
+ *
+ * A short noise burst through a two-pole resonator, which is about the cheapest
+ * thing that sounds struck rather than clicked. The resonance is what gives a
+ * drop its pitch — a small drop on glass pings high, a big one on a sill thuds —
+ * and randomising it across drops is most of why a loop of them reads as rain
+ * rather than as a machine ticking.
+ *
+ * `at` may run past the end: the caller writes modulo the length, so a drop that
+ * starts near the end finishes at the beginning and the loop has no seam.
+ */
+function addDrop(out, at, { hz, decay, level, rate }) {
+  const w = (2 * Math.PI * hz) / rate;
+  const r = Math.exp(-1 / (decay * rate));
+  const c = 2 * r * Math.cos(w);
+  const r2 = r * r;
+  const burst = Math.max(2, Math.floor(rate * 0.0015));   // the impact itself
+  const tail = Math.floor(decay * rate * 5);              // what rings after it
+
+  // NORMALISED BY (1 - r), AND IT IS NOT OPTIONAL. A two-pole resonator has a
+  // gain at resonance of roughly 1/(1 - r), which at these decay times is about
+  // 290x. Measured before this line existed: peaks of 16 and 43 against a full
+  // scale of 1, which is not a rain sound, it is destruction. Normalising here
+  // also makes `level` mean the same thing whatever `decay` is, so a long drop
+  // and a short one are equally loud rather than wildly not.
+  const norm = (1 - r) * level;
+
+  let y1 = 0, y2 = 0;
+  for (let i = 0; i < burst + tail; i++) {
+    const x = i < burst ? (Math.random() * 2 - 1) : 0;
+    const y = x + c * y1 - r2 * y2;
+    y2 = y1; y1 = y;
+    out[(at + i) % out.length] += y * norm;
+  }
+}
+
+/**
+ * A loop of rain, with the drops already in it.
+ *
+ * Density is the thing to get right: too few and it is a dripping tap, too many
+ * and the drops merge into the hiss they are supposed to sit on top of. These
+ * are only the ones an ear picks out individually — the mass of rain is the
+ * noise layer underneath.
+ *
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN. Measured: the hiss arrives
+ * at the mix at about 0.041 rms, and these levels put the two drop loops together
+ * at roughly 0.42 of that — present enough to be picked out one at a time, quiet
+ * enough that they sit ON the rain rather than in front of it. Peak stays near
+ * 0.35, so nothing clips before the ceiling.
+ */
+function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
+  const rate = ctx.sampleRate;
+  const n = Math.floor(seconds * rate);
+  const buf = ctx.createBuffer(1, n, rate);
+  const out = buf.getChannelData(0);
+
+  const count = Math.round(seconds * perSecond);
+  for (let i = 0; i < count; i++) {
+    addDrop(out, Math.floor(Math.random() * n), {
+      // Log-spaced, so the ear hears the range as even rather than crowded high.
+      hz: hzLow * Math.pow(hzHigh / hzLow, Math.random()),
+      decay: decay * (0.6 + Math.random() * 0.8),
+      // Mostly quiet with an occasional near one, which is what stops a loop of
+      // drops sounding like a drum machine.
+      level: level * Math.pow(Math.random(), 1.8),
+      rate,
+    });
+  }
+  return buf;
+}
+
+/** A shower easing in and out. Far slower and far gentler than a wave — rain
+ *  does not surge, it thickens. */
+const showerShape = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
+
+runBed({
+  title: 'Rain',
+  ceiling: CEILING,
+  fadeIn: 10,
+  fadeOut: 90,
+
+  build(ctx, dest, t0, sources) {
+    // ── the rumble ────────────────────────────────────────────────────────
+    // Rain on a roof, a long way down. Constant, and the reason the bed has a
+    // body rather than just a surface.
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 200, gain: 0.55 }, dest, t0);
+
+    // ── the hiss ──────────────────────────────────────────────────────────
+    // The mass of rain: every impact too small to pick out. Bandpassed rather
+    // than lowpassed, because rain has very little down low — that is what the
+    // rumble is for — and taking the bottom out keeps the two from muddying.
+    const hissGain = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(320, t0);
+    hp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(TOP * 0.62, t0);
+
+    const hiss = ctx.createBufferSource();
+    hiss.buffer = pinkLoop(ctx, 13.9);
+    hiss.loop = true;
+    hiss.connect(hp).connect(lp).connect(hissGain).connect(dest);
+    hiss.start(t0);
+    sources.push(hiss);
+
+    // The shower. Three coprime periods, all far longer than a wave's, so the
+    // rain thickens and eases over minutes and never does it twice the same way.
+    hissGain.gain.setValueAtTime(0.42, t0);
+    for (const [seconds, amount] of [[37, 0.13], [53, 0.10], [71, 0.08]]) {
+      const shape = envelopeLoop(ctx, seconds, showerShape);
+      modulate(ctx, sources, shape, amount, t0, hissGain.gain);
+      // Heavier rain is brighter as well as louder, so the same envelope opens
+      // the top a little. Scaled small: this is weather, not a filter sweep.
+      modulate(ctx, sources, shape, amount * 2600, t0, lp.frequency);
+    }
+
+    // ── the drops ─────────────────────────────────────────────────────────
+    // Two loops at coprime lengths: the near, small, bright ones and the rarer
+    // big ones further off. Their patterns drift apart and never realign.
+    const near = ctx.createBufferSource();
+    near.buffer = dropLoop(ctx, {
+      seconds: 19.7, perSecond: 13, hzLow: 900, hzHigh: 4200, decay: 0.006, level: 2.2,
+    });
+    near.loop = true;
+
+    const far = ctx.createBufferSource();
+    far.buffer = dropLoop(ctx, {
+      seconds: 23.3, perSecond: 3.5, hzLow: 320, hzHigh: 1100, decay: 0.016, level: 1.6,
+    });
+    far.loop = true;
+
+    const dropLp = ctx.createBiquadFilter();
+    dropLp.type = 'lowpass';
+    dropLp.frequency.setValueAtTime(TOP, t0);
+    dropLp.Q.value = 0.7;
+
+    const dropGain = ctx.createGain();
+    dropGain.gain.value = 0.9;
+    near.connect(dropLp);
+    far.connect(dropLp);
+    dropLp.connect(dropGain).connect(dest);
+    near.start(t0);
+    far.start(t0);
+    sources.push(near, far);
+  },
+});
+</script>
+</body>
+</html>

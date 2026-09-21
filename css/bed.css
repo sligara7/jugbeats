@@ -1,0 +1,120 @@
+/* The shell every bed wears.
+ *
+ * One tap to start, a countdown, a way to stop. A bed page supplies two custom
+ * properties and its own words, and nothing else about the layout differs:
+ *
+ *   --accent   the one colour that is not grey
+ *   --bg       the page behind it
+ *
+ * WHY THE PAGE GOES BLACK WHILE IT PLAYS. Whatever is on screen is going to be
+ * in a dark room next to somebody trying to sleep, so once it is running there
+ * is nothing to look at but the time left.
+ */
+
+:root {
+  color-scheme: dark;
+  --ink: #eef2f5;
+  --dim: #8090a0;
+  --accent: #7fd6ff;
+  --bg: #07060b;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 500 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 20px
+           calc(24px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  transition: background 1.2s;
+}
+body.playing { background: #000; }
+
+h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.02em; font-weight: 600; }
+.sub { margin: 0 0 4px; color: var(--dim); font-size: 15px; max-width: 22em; }
+
+/* The placement line. Said before it starts, because distance is the only large
+ * lever anyone has over how loud this is where the baby actually is — and it is
+ * the one thing on the page aimed at the adult in the room rather than at the
+ * child who pressed the button. */
+.place {
+  margin: 18px 0 26px;
+  padding: 12px 16px;
+  max-width: 22em;
+  border: 1px solid #ffffff1f;
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.label {
+  color: var(--dim);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* THE DURATIONS ARE THE START CONTROL. Tapping one both picks the length and
+ * begins, so a nine-year-old still starts it in one tap and there is no settings
+ * step to get wrong (req:she-turns-it-on-herself, req:you-say-how-long). */
+.times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 22em;
+}
+.times button {
+  appearance: none;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 600;
+  padding: 20px 8px;
+  border-radius: 16px;
+  cursor: pointer;
+  border: 1px solid #ffffff2b;
+  background: #ffffff0d;
+  color: var(--ink);
+  transition: transform 0.1s, background 0.15s;
+}
+.times button:active { transform: scale(0.97); background: #ffffff1a; }
+
+#playing { display: none; }
+body.playing #start { display: none; }
+body.playing #playing { display: block; }
+
+.left { font-size: 15px; color: var(--dim); }
+.clock {
+  font-size: 64px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin: 10px 0 2px;
+  letter-spacing: -0.02em;
+}
+.hint { color: #56646f; font-size: 14px; margin: 28px 0 0; max-width: 20em; }
+
+#stop {
+  appearance: none;
+  font: inherit;
+  font-size: 15px;
+  margin-top: 30px;
+  padding: 13px 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid #ffffff26;
+  background: transparent;
+  color: var(--dim);
+}
+
+.err { color: #ff90ab; font-size: 14px; margin-top: 18px; min-height: 1em; }
