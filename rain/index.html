@@ -140,6 +140,22 @@ const BROWN = 0.8;
 const NOISE = 0.45;
 
 /**
+ * AND HOW LOUD THE DROPS ARE — "turn the rain drops down too", 2026-09-21.
+ *
+ * A third off, to match what the noise was given. The reason it was needed is
+ * worth keeping: NOTHING HAD TOUCHED THE DROPS, and they had still got louder.
+ * Twice turning the wash down moved them from 0.48 of the hiss, where they were
+ * first balanced, to 0.79 — loud enough to start reading as ticking rather than
+ * as rain. This puts them back at 0.51, which is where they were designed to
+ * sit, except that the whole bed around them is now quieter and darker.
+ *
+ * THAT IS WHY THIS IS ITS OWN DIAL RATHER THAN A NUMBER FOLDED INTO THE LEVELS
+ * ABOVE. Every measured figure in this file is stated before its multiplier, so
+ * moving one of the three — noise, drops, density — never silently moves another.
+ */
+const DROPS = 0.65;
+
+/**
  * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
  *
  * A short noise burst through a two-pole resonator, which is about the cheapest
@@ -184,12 +200,12 @@ function addDrop(out, at, { hz, decay, level, rate }) {
  * are only the ones an ear picks out individually — the mass of rain is the
  * noise layer underneath.
  *
- * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN. Measured: at full noise
- * the hiss arrives at the mix at about 0.041 rms and these levels put the two
- * drop loops together at roughly 0.48 of that. With NOISE applied the hiss falls
- * to about 0.027 and the same drops sit at roughly 0.72 of it — forward, which
- * is what was asked for. Peaks stay near 0.46 and 0.31, so nothing clips before
- * the ceiling.
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN, and these numbers are all
+ * stated BEFORE the NOISE and DROPS multipliers. Raw, the two drop loops sit at
+ * about 0.48 of the hiss. As the bed stands — noise at 0.45, band narrowed,
+ * drops at 0.65 — the hiss reaches the mix at about 0.023 rms and the drops at
+ * about 0.012, which is 0.51 of it. Peaks stay near 0.46 and 0.31 before their
+ * multiplier, so nothing clips before the ceiling.
  */
 function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
   const rate = ctx.sampleRate;
@@ -283,7 +299,7 @@ runBed({
     dropLp.Q.value = 0.7;
 
     const dropGain = ctx.createGain();
-    dropGain.gain.value = 0.9;
+    dropGain.gain.value = 0.9 * DROPS;
     near.connect(dropLp);
     far.connect(dropLp);
     dropLp.connect(dropGain).connect(dest);
