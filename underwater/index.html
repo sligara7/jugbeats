@@ -111,30 +111,50 @@
 import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, transientLoop } from '../js/bed.js';
 
 /**
- * A LITTLE ABOVE THE OTHERS, WHICH LOOKS WRONG AND IS NOT.
+ * HALF AS MUCH AGAIN AS THE OTHER BEDS, WHICH LOOKS WRONG AND IS NOT.
  *
  * Loudness is judged mostly between 500 Hz and 4 kHz, and almost nothing here
  * reaches that band — so at rain's ceiling this bed would be barely present.
- * Same measured loudness, higher number.
+ * Same measured loudness, larger number.
+ *
+ * It rose from 0.26 when the bed was lowered, and the amount was measured rather
+ * than guessed: dropping the band to 40-260 Hz takes energy out of exactly the
+ * range the ear weighs, so 0.33 is what holds the loudness where it already was.
+ * A first attempt at 0.40 would have made it LOUDER while meaning to leave it
+ * alone — the same trap four levels in /rain/ fell into.
  */
-const CEILING = 0.26;
+const CEILING = 0.33;
 
 /** Where everything stops. This is the muffling, and it is the whole idea. */
-const TOP = 620;
+const TOP = 260;
 
 /**
- * NOT LOWER THAN THIS, and the reason is the speaker rather than the sea.
+ * ⚠️ MUCH LOWER THAN THE FIRST TWO VERSIONS, AND AGAINST MY OWN ARGUMENT.
  *
- * A phone reproduces very little below about 300 Hz, so a bed that lives at 80
- * would be inaudible across a room — present on headphones, absent where it is
- * actually used. dec:drone-voiced-up hit this in the game and voiced its drone
- * UP two octaves to survive it.
+ * This constant used to be 170 and carried a note saying it must not go lower,
+ * because a phone reproduces very little below about 300 Hz and a bed living
+ * down there would be inaudible across a room.
+ *
+ * THE OWNER LISTENED AND SAID IT WAS NOT LOW ENOUGH: "the ocean frequency should
+ * be lower - it isn't too far from how the regular sleep sounds." Measured, he is
+ * exactly right and the margin was not close. Spectral centroid of /sleep/ is
+ * 399 Hz; the version he heard was 452 — thirteen per cent ABOVE the bed it was
+ * supposed to be nothing like. Two beds in the same band are one bed.
+ *
+ * The first correction tried was 90/700/200, which measured 404 Hz — still the
+ * same sound as sleep. It took 40/260/120 at full brown to reach 344, fourteen
+ * per cent BELOW sleep, and that is what is here.
+ *
+ * THE SPEAKER RISK IS REAL AND IS NOW ACCEPTED RATHER THAN AVOIDED. If this
+ * vanishes on a phone across a room, that is the answer and the fix is to voice
+ * it back up — but a bed that is safely audible and indistinguishable from
+ * another bed is not worth having either.
  */
-const FLOOR = 170;
+const FLOOR = 40;
 
 /** Almost all the way to brown. Water is the one place where that is not a
  *  compromise but a description. */
-const BROWN = 0.92;
+const BROWN = 1.0;
 
 /** The swell. Slower than surf and far slower than a gust: this is pressure and
  *  distance changing, not weather. */
@@ -175,7 +195,7 @@ runBed({
     // ── the pressure ──────────────────────────────────────────────────────
     // The lowest thing here, constant, and what gives the bed its weight. Kept
     // above FLOOR so a phone can actually produce it.
-    noiseLayer(ctx, sources, { seconds: 11.7, cut: 300, gain: 0.5, brown: BROWN }, dest, t0);
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 120, gain: 0.5, brown: BROWN }, dest, t0);
 
     // ── the body ──────────────────────────────────────────────────────────
     // Water moving. A narrow band, because the whole character of being under
@@ -212,14 +232,14 @@ runBed({
     for (const [seconds, amount] of SWELLS) {
       const shape = envelopeLoop(ctx, seconds, swellShape);
       modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
-      modulate(ctx, sources, shape, amount * 2400, t0, lp.frequency);
+      modulate(ctx, sources, shape, amount * 900, t0, lp.frequency);
     }
 
     // The faster movement, which is the half a jet cannot have.
     for (const [seconds, amount] of FLOW) {
       const shape = envelopeLoop(ctx, seconds, swellShape);
       modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
-      modulate(ctx, sources, shape, amount * 3100, t0, lp.frequency);
+      modulate(ctx, sources, shape, amount * 1100, t0, lp.frequency);
     }
 
     // ── the bubbles ───────────────────────────────────────────────────────
@@ -238,15 +258,15 @@ runBed({
     // 2200 Hz where they can actually be picked out.
     const bubbleTop = ctx.createBiquadFilter();
     bubbleTop.type = 'lowpass';
-    bubbleTop.frequency.setValueAtTime(2200, t0);
+    bubbleTop.frequency.setValueAtTime(1100, t0);
     bubbleTop.Q.value = 0.7;
     const bubbleGain = ctx.createGain();
     bubbleGain.gain.value = 0.85;
     bubbleTop.connect(bubbleGain).connect(dest);
 
     for (const cfg of [
-      { seconds: 127, perSecond: 2.6, hzLow: 190, hzHigh: 900, decay: 0.012, level: 1.5 },
-      { seconds: 167, perSecond: 1.1, hzLow: 300, hzHigh: 1500, decay: 0.008, level: 1.1 },
+      { seconds: 127, perSecond: 2.6, hzLow: 130, hzHigh: 600, decay: 0.012, level: 1.5 },
+      { seconds: 167, perSecond: 1.1, hzLow: 200, hzHigh: 900, decay: 0.008, level: 1.1 },
     ]) {
       const src = ctx.createBufferSource();
       src.buffer = transientLoop(ctx, cfg);
