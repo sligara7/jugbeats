@@ -6,7 +6,7 @@
 <title>Underwater</title>
 
 <!--
-  THE UNDERWATER PAGE — the most muffled bed in the family, on purpose.
+  THE UNDERWATER PAGE — the darkest bed in the family, but not the stillest.
 
   From the owner's list: "the muffled, bubbling sound of being underwater
   provides a highly insulated, womb-like audio environment. It completely cuts
@@ -35,13 +35,37 @@
   one that is slightly wrong is uncanny rather than merely imperfect. It wants
   its own decision, and probably a recording.
 
-  ── THE ONE RISK WORTH NAMING ──────────────────────────────────────────────
+  ── THE FIRST VERSION SOUNDED LIKE AN AEROPLANE ────────────────────────────
 
-  A bed this dark may simply be inaudible on a phone speaker across a room, which
-  is exactly where it is meant to be used. A phone cannot reproduce much below
-  about 300 Hz at all — dec:drone-voiced-up exists in the game for that reason, and
-  voiced its drone UP two octaves to survive. So the bottom here is deliberately
-  not as low as "underwater" would suggest: it is muffled, not subsonic.
+  The owner, on hearing it: "the underwater one sounds a lot like being on a
+  passenger jet." He was right, and the cause was a decision made here on
+  purpose.
+
+  STEADY BROADBAND NOISE, LOWPASSED LOW, IS THE ACOUSTIC DEFINITION OF A JET
+  CABIN — that is exactly what engine and airflow noise is. The first version had
+  a lowpass pinned at a flat 620 Hz, because a comment in the code argued that
+  "the top is the thing being withheld, and letting it breathe would undo the
+  only idea this bed has". That reasoning was wrong.
+
+  THE IDEA IS DARK, NOT STILL. A spectrum that never moves is a machine. Water is
+  dark AND constantly moving, and the movement is what tells you which one you
+  are inside. The top now sweeps between about 620 and 2000 Hz across two
+  timescales — a slow swell and a FLOW every few seconds that a jet has nothing
+  like — and a five-second window carries 2.7x the movement it did.
+
+  AND THE BUBBLES WERE HIDDEN, which was the other half. At 0.9 and 0.35 a second
+  under an 870 Hz lowpass they were nearly inaudible, leaving no cue at all that
+  this was water. A bubble is the one sound nothing else makes, so it is the
+  identifying feature and it was being suppressed. Three times as many now, and
+  allowed up to 2200 Hz where an ear can actually find them.
+
+  ── THE RISK THAT STILL STANDS ─────────────────────────────────────────────
+
+  A bed this dark may be inaudible on a phone speaker across a room, which is
+  exactly where it is meant to be used. A phone reproduces very little below
+  about 300 Hz — dec:drone-voiced-up exists in the game for that reason and voiced
+  its drone UP two octaves to survive. So the bottom here is deliberately not as
+  low as "underwater" would suggest: muffled, not subsonic.
 -->
 
 <meta name="theme-color" content="#04080c">
@@ -116,7 +140,27 @@ const BROWN = 0.92;
  *  distance changing, not weather. */
 const SWELLS = [[41, 0.16], [59, 0.12], [83, 0.09]];
 
-const BODY_BASE = 0.62 - 0.5 * SWELLS.reduce((n, [, amount]) => n + amount, 0);
+/**
+ * THE FLOW — water moving past, every few seconds.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THE FIRST VERSION SOUNDED LIKE AN AEROPLANE. The owner,
+ * on hearing it: "the underwater one sounds a lot like being on a passenger jet."
+ *
+ * He is right, and the diagnosis is not subtle once said out loud: STEADY
+ * BROADBAND NOISE, LOWPASSED LOW, IS THE ACOUSTIC DEFINITION OF A JET CABIN.
+ * That is exactly what engine and airflow noise is. What separates water from a
+ * machine is not its darkness — it is that water MOVES and a machine does not.
+ * The first version had a swell so slow and so gentle it read as constant, and
+ * constant plus dark is an aeroplane.
+ *
+ * So this is a second, faster timescale on top of the swell. A jet has nothing
+ * at this rate; moving water has little else.
+ */
+const FLOW = [[7.3, 0.10], [11.9, 0.075], [17.3, 0.055]];
+
+const BODY_BASE = 0.62
+  - 0.5 * SWELLS.reduce((n, [, amount]) => n + amount, 0)
+  - 0.5 * FLOW.reduce((n, [, amount]) => n + amount, 0);
 
 /** A long, even rise and fall. Nothing underwater arrives. */
 const swellShape = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
@@ -154,34 +198,55 @@ runBed({
     sources.push(body);
 
     bodyGain.gain.setValueAtTime(BODY_BASE, t0);
+
+    // ⚠️ THE TOP MOVES NOW, AND REFUSING TO LET IT WAS THE BUG.
+    //
+    // The first version said, in a comment right here: "NO BRIGHTNESS ON THE
+    // SWELL... the top is the thing being withheld, and letting it breathe would
+    // undo the only idea this bed has." That reasoning was wrong, and it is the
+    // reason it came out sounding like a passenger jet.
+    //
+    // The idea is DARK, not STILL. A spectrum that never moves is a machine —
+    // that is precisely what makes cabin noise cabin noise. Water is dark AND
+    // constantly moving, and the movement is what says which one you are in.
     for (const [seconds, amount] of SWELLS) {
       const shape = envelopeLoop(ctx, seconds, swellShape);
       modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
-      // NO BRIGHTNESS ON THE SWELL. Everywhere else in the family a swell opens
-      // the top a little; here the top is the thing being withheld, and letting
-      // it breathe would undo the only idea this bed has.
+      modulate(ctx, sources, shape, amount * 2400, t0, lp.frequency);
+    }
+
+    // The faster movement, which is the half a jet cannot have.
+    for (const [seconds, amount] of FLOW) {
+      const shape = envelopeLoop(ctx, seconds, swellShape);
+      modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
+      modulate(ctx, sources, shape, amount * 3100, t0, lp.frequency);
     }
 
     // ── the bubbles ───────────────────────────────────────────────────────
-    // Rare, low and short. Two loops at coprime prime lengths so nothing ever
-    // repeats, and DELIBERATELY SPARSE — perSecond under one, where rain's near
-    // layer runs at thirteen. A bubble every second or two is a fish tank; every
-    // few seconds is the sea.
+    // Two loops at coprime prime lengths so nothing ever repeats. Still far
+    // sparser than rain's thirteen a second — this is the sea rather than a fish
+    // tank — but no longer so sparse that minutes pass without one.
     //
     // DECAY STAYS SHORT despite the low pitch, which is the lesson rain paid for:
     // a resonator held past about 100ms stops being a strike and becomes a PITCH,
     // and a pitched bubble is a marimba.
+    // ⚠️ AND THEY WERE FAR TOO SPARSE AND TOO DARK TO DO THEIR JOB. At 0.9 and
+    // 0.35 a second under an 870 Hz lowpass, they were nearly inaudible — which
+    // left the bed with no cue at all that it was water rather than a machine.
+    // A BUBBLE IS THE ONE SOUND NOTHING ELSE MAKES, so it is the identifying
+    // feature and it was being hidden. Three times as many, and allowed up to
+    // 2200 Hz where they can actually be picked out.
     const bubbleTop = ctx.createBiquadFilter();
     bubbleTop.type = 'lowpass';
-    bubbleTop.frequency.setValueAtTime(TOP * 1.4, t0);
+    bubbleTop.frequency.setValueAtTime(2200, t0);
     bubbleTop.Q.value = 0.7;
     const bubbleGain = ctx.createGain();
-    bubbleGain.gain.value = 0.5;
+    bubbleGain.gain.value = 0.85;
     bubbleTop.connect(bubbleGain).connect(dest);
 
     for (const cfg of [
-      { seconds: 127, perSecond: 0.9, hzLow: 190, hzHigh: 520, decay: 0.012, level: 1.5 },
-      { seconds: 167, perSecond: 0.35, hzLow: 300, hzHigh: 800, decay: 0.008, level: 1.1 },
+      { seconds: 127, perSecond: 2.6, hzLow: 190, hzHigh: 900, decay: 0.012, level: 1.5 },
+      { seconds: 167, perSecond: 1.1, hzLow: 300, hzHigh: 1500, decay: 0.008, level: 1.1 },
     ]) {
       const src = ctx.createBufferSource();
       src.buffer = transientLoop(ctx, cfg);
