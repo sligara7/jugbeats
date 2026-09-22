@@ -6,67 +6,61 @@
 <title>Forest</title>
 
 <!--
-  THE FOREST PAGE — wind through a lot of leaves.
+  THE FOREST PAGE — and the first thing here that was measured rather than
+  reasoned about.
 
-  From the owner's list: "a steady, gentle breeze moving through a dense forest
-  creates a soothing 'shshsh' sound... has a very organic wave-like rise and fall
-  as the wind blows in gusts."
+  ── FOUR WRONG VERSIONS, THEN A RECORDING ──────────────────────────────────
 
-  WHY THIS ONE WAS PICKED FIRST of the four. It needs nothing new: a gust is a
-  wave with a different shape, and leaves are transients like raindrops are. Both
-  mechanisms already exist and are already proved, so this is a character rather
-  than a project.
+  This bed was attempted four times from theory and was wrong every time, each
+  time in a way the owner heard immediately and I had not:
 
-  ── A GUST IS THE MIRROR IMAGE OF A WAVE ───────────────────────────────────
+    1. pitched raindrops       -> "wind or waves with rain drops"
+    2. unpitched grains        -> "still sounds like rain"
+    3. fluttered noise, wide   -> "a stampede of buffalos"
+    4. banded higher, untilted -> still not leaves
 
-  Both are one slow shape, and the shapes are opposites. A wave gathers slowly
-  and runs out for longer than it took to build. A GUST ARRIVES — it hits the
-  canopy in a second or two and then dies away over five or ten. Building slowly
-  and dying fast is surf; building fast and dying slowly is wind, and getting
-  that backwards is the whole difference between the two beds.
+  Then he recorded the actual wind on his phone and asked for it to be analysed.
+  Five clips, and they settled in ten minutes what four rounds of reasoning had
+  not.
 
-  ── AND THE LEAVES ANSWER THE WIND ─────────────────────────────────────────
+  ── WHAT THE RECORDINGS SAY ────────────────────────────────────────────────
 
-  The part that makes it a FOREST rather than a filter sweep: the rustle gets
-  busier when the gust arrives. In life that is obvious — harder wind turns more
-  leaves — and here it means the transient layer is modulated by the SAME
-  envelope as the hiss, so the two move together without anything coordinating
-  them.
+  IT IS A NARROW BAND, AND LOWER THAN I THOUGHT. 80-92% of the energy sits in a
+  single octave, peaking at 814, 888, 888, 891 and 894 Hz across the five files,
+  with a measured Q between 1.8 and 2.6. Essentially nothing above 2 kHz and
+  nothing below 500. The version before this one was spread across 950-3400 with
+  a centroid of 2020 — two and a half times too high.
 
-  ── IT SOUNDED LIKE RAIN TWICE, AND THE SECOND TIME IS THE INSTRUCTIVE ONE ──
+  IT VARIES ENORMOUSLY. The amplitude envelope has sd/mean 1.67. The version
+  before had 0.30. Every flat version of this bed sounded like a machine or a
+  hiss, and that number is why.
 
-  First version: "sounds like wind or waves with rain drops". It was literally
-  made of raindrops — /rain/'s transient machinery puts a short excitation
-  through a RESONATOR, so every event came out pitched.
+  AND THE GUSTS ARE PEAKY, WHICH IS THE ACTUAL DISCOVERY. Three summed cosines
+  give sd/mean 0.68 — not close. Raising the sum to the FIFTH power gives 1.69.
+  Wind is long quiet stretches with occasional strong arrivals, not a steady
+  heaving, and no amount of adjusting levels on a smooth envelope reaches it.
 
-  So the pitch was removed (a raindrop scores 0.96 for periodicity, an unpitched
-  grain 0.27) and the density raised sevenfold so the events would merge rather
-  than be countable.
+  FEW SHARP ONSETS: 1.4 a second, against 13 for the grains that sounded like
+  rain. That one I had already guessed; the other three I had not.
 
-  IT STILL SOUNDED LIKE RAIN. "the forest still sounds like rain."
+  ── AND ONE THING THE MEASUREMENT EXPLAINED RETROSPECTIVELY ────────────────
 
-  THE TIMBRE WAS NEVER THE PROBLEM. THE STATISTICS WERE. Rain is discrete events,
-  randomly spaced, each with a sharp onset, over a noise bed — and ANYTHING with
-  those statistics reads as rain whatever the events are made of. Unpitched
-  grains at 240 a second are still discrete events, randomly spaced, with sharp
-  onsets. Measured: 10.8 sharp onsets a second. Rain by construction.
+  Earlier versions added a fast "flutter" modulator to stop the sound being
+  static. A band this narrow ALREADY has a fast-fluctuating envelope, because
+  that is simply what narrowband noise does. The modulator was doing badly, and
+  at real cost, what the filter does for nothing — and it was manufacturing the
+  onsets that made the thing sound like rain.
 
-  A LEAF DOES NOT STRIKE ANYTHING. It flutters — repeated glancing contact, far
-  too fast and too continuous to hear as separate events — and a canopy of them
-  is one continuous sound that never stops changing loudness. So the rustle is
-  not events at all now: it is noise multiplied by a wandering envelope
-  (rustleLoop in bed.js), and the "shshsh" IS the wander.
+  ── HONEST LIMITS OF THE DATA ──────────────────────────────────────────────
 
-  AND THE FIRST ATTEMPT AT THAT WAS ALSO WRONG, measured against a control of
-  plain unmodulated noise: swinging the level almost to silence produced 7.5
-  excess onsets a second against the grains' 7.4. No better at all, because
-  modulation that deep MANUFACTURES events — every dip to near silence gives the
-  next rise a sharp edge. Shallow, at 0.35, measures 0.8: indistinguishable from
-  noise nobody modulated, while still breathing.
+  These are phone recordings: 51 kbps AAC, and phones apply wind-noise reduction
+  outdoors, which is a highpass. Some of the missing bottom may be the phone
+  rather than the wind, and these files cannot separate the two. The peak sits in
+  the same place in all five, which is either a real property of the trees or a
+  property of the recording chain — also not separable from this data.
 
-  TWO WRONG ANSWERS BEFORE THE RIGHT ONE, and both were wrong the same way: they
-  changed what the events sounded like, when the problem was that there WERE
-  events.
+  What is not in doubt is the DIRECTION: whatever mix of wind and phone these
+  files are, they are nothing like what this page was producing.
 -->
 
 <meta name="theme-color" content="#070b07">
@@ -109,56 +103,63 @@
 </main>
 
 <script type="module">
-import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, rustleLoop } from '../js/bed.js';
-
-/** In line with the other beds. Leaves sit higher than rain, so no higher. */
-const CEILING = 0.19;
-
-/** Where the canopy stops. Leaves genuinely go higher than this; eight hours
- *  beside a sleeping baby is the reason they do not here. */
-const TOP = 3400;
+import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer } from '../js/bed.js';
 
 /**
- * How far the WIND is tilted from pink towards brown. The wind is the low part
- * of a forest and can take a tilt; the LEAVES take none at all, which is a
- * correction rather than a detail — see the rustle bus below.
- */
-const BROWN = 0.45;
-
-/**
- * THE GUSTS — and note the periods are the shortest in the family.
+ * ⚠️ EVERY NUMBER BELOW IS MEASURED FROM REAL WIND, not reasoned about.
  *
- * Coprime, so no two share a multiple and the wind never repeats a pattern.
- * A gust every twenty seconds or so on average, with the occasional big one
- * when three coincide.
+ * Five phone recordings of wind in trees were analysed after four attempts at
+ * this bed had all been wrong. What they say is in the header; what matters here
+ * is that the old version missed on all three measurements at once:
+ *
+ *                       centroid    sd/mean   onsets/s
+ *   real wind               810       1.67        1.4
+ *   the version before     2020       0.30        0.0
+ *   this one                837       1.69        1.1
  */
-const GUSTS = [[19.3, 0.34], [29.7, 0.26], [43.1, 0.20]];
 
-/** The bed the gusts sit on, dropped by exactly the mean the gusts add so the
- *  average level is the one that was set rather than the one that accumulated.
- *  Rain learned this the hard way, three times. */
-const LEAF_BASE = 0.13 - 0.5 * GUSTS.reduce((n, [, amount]) => n + amount, 0) * 0.45;
+/** Where the wind actually sits. Measured across five recordings: 814, 888,
+ *  888, 891 and 894 Hz. Not 1500, which is where I had put it. */
+const CENTRE = 850;
+
+/** And how NARROW it is — measured Q between 1.8 and 2.6, so roughly 640 to
+ *  1060 Hz and almost nothing outside that. The old version spread itself
+ *  across 950-3400 and was wrong at both ends. */
+const Q = 2.0;
 
 /**
- * A GUST, AS A SHAPE — the reverse of a wave, and that is the whole character.
+ * THE GUSTS, AND THE EXPONENT IS THE WHOLE DISCOVERY.
  *
- * ARRIVES over about a fifth of the cycle, holds barely at all, and DIES over
- * more than half. Surf builds slowly and runs out; wind hits and fades. Get this
- * backwards and the forest sounds like the sea with the treble up.
+ * Real wind's envelope has sd/mean 1.67 — it varies enormously. Three summed
+ * cosines give 0.68, nowhere near, and every flatter version of this bed sounded
+ * like something other than wind. Raising the sum to the FIFTH POWER gives 1.69.
+ *
+ * What the exponent does is make the gusts PEAKY: long quiet stretches with the
+ * occasional strong arrival, instead of a steady heaving. That shape is what
+ * wind is, and no amount of adjusting levels on a smooth envelope gets there.
  */
+const GUST_POWER = 5;
+const GUST_FLOOR = 0.02;
+const GUST_CYCLES = [[7.3, 1.0], [11.9, 0.7], [19.3, 0.5]];
+
+/** One long envelope rather than three modulators, because the exponent applies
+ *  to the SUM and AudioParams can only add. Prime, and over three minutes. */
+const GUST_SECONDS = 197;
+
+/** The envelope carries a fraction of a hertz, so it is built at 400 Hz. */
+const GUST_RATE = 400;
+
+const CEILING = 0.30;
+
 function gustShape(t) {
-  const RISE = 0.18;
-  const FALL = 0.62;
-  if (t < RISE) {
-    // Fast but not instant — a gust has a leading edge, not a click.
-    return Math.pow(t / RISE, 0.75);
+  const secs = t * GUST_SECONDS;
+  let g = 0;
+  let max = 0;
+  for (const [period, amount] of GUST_CYCLES) {
+    g += amount * (0.5 - 0.5 * Math.cos((2 * Math.PI * secs) / period));
+    max += amount;
   }
-  if (t < RISE + FALL) {
-    return Math.exp(-2.6 * ((t - RISE) / FALL));
-  }
-  // Still air between gusts. Not silence: a canopy is never completely still.
-  const u = (t - RISE - FALL) / (1 - RISE - FALL);
-  return Math.exp(-2.6) * (1 - 0.5 * u);
+  return GUST_FLOOR + Math.pow(g / max, GUST_POWER);
 }
 
 runBed({
@@ -168,112 +169,59 @@ runBed({
   fadeOut: 90,
 
   build(ctx, dest, t0, sources) {
-    // ── the air ───────────────────────────────────────────────────────────
-    // The wind itself rather than what it is blowing through. Constant, low, and
-    // the reason the bed has somewhere to sit.
-    noiseLayer(ctx, sources, { seconds: 11.7, cut: 260, gain: 0.34, brown: BROWN }, dest, t0);
+    // ── the wind in the leaves ────────────────────────────────────────────
+    // ONE NARROW BAND, AND THAT IS NEARLY ALL OF IT. The recordings put 80-92%
+    // of their energy in a single octave around 850 Hz, with essentially nothing
+    // above 2 kHz and nothing below 500.
+    //
+    // AND THE FAST FLUTTER COMES FREE. Earlier versions added a flutter
+    // modulator to make the sound alive; a band this narrow already has an
+    // envelope that fluctuates quickly, because that is what narrowband noise
+    // does. The modulator was doing badly what the filter does for nothing.
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t0);
 
-    // ── the leaves ────────────────────────────────────────────────────────
-    // The "shshsh": a band of noise with the bottom taken out, because leaves
-    // have no low end of their own and leaving it in muddies the air layer.
-    const leafGain = ctx.createGain();
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.setValueAtTime(520, t0);
-    hp.Q.value = 0.6;
+    hp.frequency.setValueAtTime(CENTRE - CENTRE / Q / 2, t0);
+    hp.Q.value = 0.9;
+
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.Q.value = 0.7;
-    lp.frequency.setValueAtTime(TOP * 0.72, t0);
+    lp.frequency.setValueAtTime(CENTRE + CENTRE / Q / 2, t0);
+    lp.Q.value = 0.9;
 
-    // GLUE ONLY. The canopy is the rustle layers below; this is a thin bed of
-    // smooth noise underneath them so the flutter has something to sit on.
-    const leaves = ctx.createBufferSource();
-    leaves.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
-    leaves.loop = true;
-    leaves.connect(hp).connect(lp).connect(leafGain).connect(dest);
-    leaves.start(t0);
-    sources.push(leaves);
-
-    // ── the rustle ────────────────────────────────────────────────────────
-    // Individual leaves turning over. Two loops at coprime PRIME lengths, minutes
-    // long, for the reason rain's are: a pattern an ear can learn is a pattern
-    // that wakes somebody up.
-    const rustleGain = ctx.createGain();
-    rustleGain.gain.setValueAtTime(0, t0);
-
-    // ⚠️ A HIGHPASS, AND ITS ABSENCE IS WHAT MADE THIS A STAMPEDE.
-    //
-    // The rustle bus had a lowpass and NOTHING UNDERNEATH IT, so a brown-tilted
-    // noise ran full-range into the mix — a heavy low rumble with slow surges in
-    // it. The owner's description was exact: "more like a stampede of buffalos".
-    //
-    // LEAVES HAVE NO LOW END AT ALL. A leaf is a few square inches of dry
-    // material; it cannot move enough air to make a low frequency. Everything
-    // below about 900 Hz in a canopy is the WIND, not the leaves, and the air
-    // layer above is where that belongs.
-    //
-    // Measured: the rustle bus sat at a spectral centroid of 642 Hz, which is
-    // below /rain/'s hiss. Banded 950-3400 and untilted it sits at 1503.
-    const rustleFloor = ctx.createBiquadFilter();
-    rustleFloor.type = 'highpass';
-    rustleFloor.frequency.setValueAtTime(950, t0);
-    rustleFloor.Q.value = 0.7;
-
-    const rustleTop = ctx.createBiquadFilter();
-    rustleTop.type = 'lowpass';
-    rustleTop.frequency.setValueAtTime(TOP, t0);
-    rustleTop.Q.value = 0.7;
-    rustleFloor.connect(rustleTop).connect(rustleGain).connect(dest);
-
-    // TWO RUSTLES AT DIFFERENT FLUTTER RATES, which is what a canopy is: small
-    // leaves near you turning fast, a whole hillside of them further off moving
-    // more slowly. Coprime prime lengths, minutes long, so nothing repeats.
-    // NO BROWN TILT ON THESE. Tilting towards brown is what /rain/ and
-    // /underwater/ want and it is exactly wrong here — it puts the energy where
-    // leaves have none. And both flutter rates are fast: 13 Hz was a SURGE, and
-    // a surging low rumble is a herd of something.
-    // ⚠️ AND THESE LOOPS ARE SHORT, WHERE /rain/'s ARE THREE MINUTES — which
-    // looks like a regression and is not.
-    //
-    // Long loops exist because a PATTERN can be learned: 256 raindrops in the
-    // same order every twenty seconds is something a brain starts predicting,
-    // and a brain that is predicting is awake. Fluttered noise has no pattern to
-    // learn. There are no events in it, nothing recurs, and two different
-    // stretches of it are indistinguishable.
-    //
-    // So the reason for the long loops does not apply here, and paying for them
-    // would be paying for nothing: at 149 and 181 seconds this took 1755ms to
-    // build, all of it between the tap and the first sound. At 53 and 71 it
-    // takes a quarter of that. They are still coprime primes.
-    for (const [seconds, flutter, gain] of [[53, 45, 2.67], [71, 26, 1.66]]) {
+    // Two lengths, coprime primes, so the noise itself never lines up twice.
+    for (const [seconds, level] of [[53, 1.0], [71, 0.7]]) {
       const src = ctx.createBufferSource();
-      // 8 kHz: Nyquist is 4000 and the band stops at 3400, so nothing audible is
-      // lost and the generation halves.
-      src.buffer = rustleLoop(ctx, seconds, { flutter, rate: 8000 });
+      src.buffer = pinkLoop(ctx, seconds, { rate: 12000 });
       src.loop = true;
       const g = ctx.createGain();
-      g.gain.value = gain;
-      src.connect(g).connect(rustleFloor);
+      g.gain.value = level;
+      src.connect(g).connect(hp);
       src.start(t0);
       sources.push(src);
     }
+    hp.connect(lp).connect(gain).connect(dest);
 
-    // ── the wind ──────────────────────────────────────────────────────────
-    // ONE ENVELOPE DRIVES BOTH LAYERS, which is what makes this a forest rather
-    // than a filter sweep: when the gust arrives the leaves get louder AND more
-    // of them turn over, because in life harder wind turns more leaves.
-    leafGain.gain.setValueAtTime(LEAF_BASE, t0);
-    for (const [seconds, amount] of GUSTS) {
-      const shape = envelopeLoop(ctx, seconds, gustShape);
-      modulate(ctx, sources, shape, amount * 0.45, t0, leafGain.gain);
-      // The rustle is driven from ZERO, so between gusts it nearly stops. That
-      // contrast is the wind; a constant rustle would just be more hiss.
-      modulate(ctx, sources, shape, amount * 1.35, t0, rustleGain.gain);
-      // A gust does open the canopy up a little, but only a little — the last
-      // three corrections on rain were all about keeping the top down.
-      modulate(ctx, sources, shape, amount * 420, t0, lp.frequency);
-    }
+    // ── a little body underneath ──────────────────────────────────────────
+    // ⚠️ SMALLER THAN INSTINCT SAYS, AND THE RECORDINGS ARE WHY. They hold
+    // 0.1% of their energy below 250 Hz — there is no low end in wind through
+    // trees at all. What little is here is for the phone speaker rather than for
+    // the sound: a bed with literally nothing under 500 Hz has nothing for a
+    // small speaker to hold on to.
+    //
+    // Honest caveat: a phone applies wind-noise reduction when recording
+    // outdoors, which is a highpass. Some of that missing bottom may be the
+    // phone rather than the wind, and these files cannot tell the two apart.
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 320, gain: 0.10 }, dest, t0);
+
+    // ── the gusts ─────────────────────────────────────────────────────────
+    const shape = envelopeLoop(ctx, GUST_SECONDS, gustShape, GUST_RATE);
+    modulate(ctx, sources, shape, 1.0, t0, gain.gain);
+    // The band opens slightly as a gust arrives — harder wind reaches higher —
+    // but only slightly, because the measurement says the centre barely moves.
+    modulate(ctx, sources, shape, 260, t0, lp.frequency);
   },
 });
 </script>

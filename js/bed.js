@@ -226,9 +226,9 @@ export const ENV_RATE = 8000;
  * off. Several at COPRIME lengths drift in and out of phase and never repeat the
  * same way, which is how a bed gets weather without anybody scheduling it.
  */
-export function envelopeLoop(ctx, seconds, shape) {
-  const n = Math.floor(seconds * ENV_RATE);
-  const buf = ctx.createBuffer(1, n, ENV_RATE);
+export function envelopeLoop(ctx, seconds, shape, rate = ENV_RATE) {
+  const n = Math.floor(seconds * rate);
+  const buf = ctx.createBuffer(1, n, rate);
   const out = buf.getChannelData(0);
   for (let i = 0; i < n; i++) out[i] = shape(i / n);
   return buf;
