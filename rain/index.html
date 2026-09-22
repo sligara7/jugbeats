@@ -30,6 +30,18 @@
   written modulo the buffer length, so the last one simply finishes at the
   beginning, exactly as it would have done if the buffer were longer.
 
+  AND THE LOOPS ARE MINUTES LONG, NOT SECONDS. They began at 19.7 and 23.3
+  seconds, which is long enough that the COMBINATION does not repeat for 76
+  minutes — but each layer still came round on its own period, and twenty seconds
+  of distinct drops is a pattern an ear can learn. A brain that starts predicting
+  a repetition is a brain that is awake.
+
+  They are 173 and 211 seconds now, both prime, so each is close to three minutes
+  on its own and the pair shares no multiple short of ten hours. What makes that
+  affordable is DROP_RATE: everything these feed is lowpassed at 1500 Hz, so
+  storing them at the full context rate was storing inaudible detail at four
+  times the price.
+
   KEPT DELIBERATELY DARKER THAN REAL RAIN. Rain has far more high-frequency
   energy than the car cabin the first bed imitated, and the high end is both the
   harsh part over hours and the part that carries the exposure risk
@@ -221,15 +233,42 @@ function addDrop(out, at, { hz, decay, level, rate }) {
  * about 0.012, which is 0.51 of it. Peaks stay near 0.46 and 0.31 before their
  * multiplier, so nothing clips before the ceiling.
  */
-function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
-  const rate = ctx.sampleRate;
-  const n = Math.floor(seconds * rate);
-  const buf = ctx.createBuffer(1, n, rate);
-  const out = buf.getChannelData(0);
+/**
+ * THE DROP LOOPS RUN AT A LOWER SAMPLE RATE THAN THE CONTEXT, which is what pays
+ * for them being minutes long instead of seconds.
+ *
+ * Everything these feed is lowpassed at AWNING_TOP, so nothing above about 4 kHz
+ * survives to be heard and storing it at 48 kHz is storing silence at great
+ * expense. 12 kHz leaves headroom over the highest resonance any drop is given
+ * and costs a quarter as much. It is the same trade the baked drum kit already
+ * makes at 22050, for the same reason.
+ */
+const DROP_RATE = 12000;
 
-  const count = Math.round(seconds * perSecond);
+/** The rate the drops were tuned at, and the level they are held to. */
+const TUNED_AT = 48000;
+/**
+ * HOW LONG THE PROBE IS, AND IT IS NOT ARBITRARY. Drop levels are drawn from a
+ * heavy-tailed distribution — mostly quiet with an occasional near one — so a
+ * short measurement of their rms is noisy. Measured over eight runs: an 8-second
+ * probe varies by 19%, 20s by 6.6%, 40s by 5.5% and 80s by 5.1%. 40 is where it
+ * stops being worth more time.
+ *
+ * WORTH KNOWING ALONGSIDE IT: the loops this is matching were 19.7 and 23.3
+ * seconds, which carry about 7% of that same variance themselves. The level his
+ * ear approved was never precise to better than that, so "parity" here means
+ * inside the noise the original already had.
+ */
+const PROBE_SECONDS = 40;
+
+function fillDrops(out, rate, { perSecond, hzLow, hzHigh, decay, level }) {
+  // COUNTED FROM THE BUFFER'S OWN DURATION, not from the config's `seconds`.
+  // The probe below is a different length from the loop it measures, and taking
+  // the count from the config packed a whole loop's drops into eight seconds —
+  // which read as 310% too loud and would have been scaled INTO the mix.
+  const count = Math.round((out.length / rate) * perSecond);
   for (let i = 0; i < count; i++) {
-    addDrop(out, Math.floor(Math.random() * n), {
+    addDrop(out, Math.floor(Math.random() * out.length), {
       // Log-spaced, so the ear hears the range as even rather than crowded high.
       hz: hzLow * Math.pow(hzHigh / hzLow, Math.random()),
       decay: decay * (0.6 + Math.random() * 0.8),
@@ -239,6 +278,51 @@ function dropLoop(ctx, { seconds, perSecond, hzLow, hzHigh, decay, level }) {
       rate,
     });
   }
+}
+
+const rmsOf = (a) => {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * a[i];
+  return Math.sqrt(s / a.length);
+};
+
+/**
+ * A loop of rain, with the drops already in it.
+ *
+ * Density is the thing to get right: too few and it is a dripping tap, too many
+ * and the drops merge into the hiss they are supposed to sit on top of. These
+ * are only the ones an ear picks out individually — the mass of rain is the
+ * noise layer underneath.
+ *
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN, and the ratio his ear
+ * settled on is 0.57. See DROPS for how that is held.
+ *
+ * ⚠️ AND THE LEVEL IS MEASURED AGAINST A PROBE RATHER THAN TRUSTED, because
+ * `level` does NOT survive a change of sample rate on its own. The excitation is
+ * 1.5 MILLISECONDS of noise, so at 12 kHz it is 18 samples where at 48 kHz it is
+ * 72, and a quarter of the energy goes into the resonator. Measured when
+ * DROP_RATE arrived: the same configuration came out 44% quieter.
+ *
+ * Two analytic corrections were tried and both were wrong — sqrt of the rate
+ * ratio overshot by 17%, and a peak-matched probe by 110% — because peak and rms
+ * do not scale the same way with burst length. So the buffer is simply compared
+ * against a short probe generated at the rate these were TUNED at, and scaled to
+ * match. It costs a few milliseconds once, it is exact, and it cannot be wrong
+ * again the next time one of these numbers moves.
+ */
+function dropLoop(ctx, cfg) {
+  const n = Math.floor(cfg.seconds * DROP_RATE);
+  const buf = ctx.createBuffer(1, n, DROP_RATE);
+  const out = buf.getChannelData(0);
+  fillDrops(out, DROP_RATE, cfg);
+
+  const probe = new Float32Array(Math.floor(PROBE_SECONDS * TUNED_AT));
+  fillDrops(probe, TUNED_AT, cfg);
+
+  const want = rmsOf(probe);
+  const got = rmsOf(out);
+  if (got > 0) for (let i = 0; i < n; i++) out[i] *= want / got;
+
   return buf;
 }
 
@@ -448,13 +532,17 @@ runBed({
       // AND THE SURFACE WAS ALREADY DOING THAT JOB. The awning's peaks are the
       // body; a drop only ever needed to be the strike. Ringing both was
       // resonating twice, which is exactly what metal sounds like.
-      seconds: 19.7, perSecond: 13, hzLow: 900, hzHigh: 4200, decay: 0.006, level: 2.2,
+      // 173 SECONDS, AND IT IS PRIME. Nearly three minutes before this layer's
+      // own pattern comes round — see the note on DROP_RATE for why that is
+      // affordable, and the header for why it matters.
+      seconds: 173, perSecond: 13, hzLow: 900, hzHigh: 4200, decay: 0.006, level: 2.2,
     });
     near.loop = true;
 
     const far = ctx.createBufferSource();
     far.buffer = dropLoop(ctx, {
-      seconds: 23.3, perSecond: 3.5, hzLow: 320, hzHigh: 1100, decay: 0.016, level: 1.6,
+      // 211, also prime, so the two share no multiple short of ten hours.
+      seconds: 211, perSecond: 3.5, hzLow: 320, hzHigh: 1100, decay: 0.016, level: 1.6,
     });
     far.loop = true;
 
