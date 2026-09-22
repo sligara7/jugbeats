@@ -388,7 +388,46 @@ const PROBE_SECONDS = 40;
  * `at` may run past the end: the caller writes modulo the length, so a drop that
  * starts near the end finishes at the beginning and the loop has no seam.
  */
-function addTransient(out, at, { hz, decay, level, rate }) {
+/**
+ * THE GRAIN ENVELOPE, PRECOMPUTED.
+ *
+ * ⚠️ A LOOKUP RATHER THAN MATH, AND IT IS NOT MICRO-OPTIMISATION. A canopy runs
+ * hundreds of grains a second over loops minutes long, so the envelope is
+ * evaluated about ten million times per buffer. Computed inline with `Math.pow`
+ * that measured 2.6 SECONDS for one layer — five seconds for a forest, all of it
+ * between the tap and the first sound. A 256-point table is inaudibly different
+ * and costs nothing.
+ */
+const GRAIN_STEPS = 256;
+const GRAIN_ENV = new Float32Array(GRAIN_STEPS);
+for (let k = 0; k < GRAIN_STEPS; k++) {
+  const t = k / GRAIN_STEPS;
+  GRAIN_ENV[k] = Math.pow(1 - t, 2.2) * Math.min(1, t * 12);
+}
+
+function addTransient(out, at, { hz, decay, level, rate, tone = 1 }) {
+  // `tone` IS WHAT SEPARATES A RAINDROP FROM A LEAF, and getting it wrong is how
+  // the forest first came out sounding like rain.
+  //
+  // At 1 the excitation goes through a RESONATOR and comes out PITCHED: a drop
+  // striking something has a note, because the thing it struck has a note. At 0
+  // there is no resonator at all, just a short burst of noise under a falling
+  // envelope — a crinkle with no pitch anywhere in it.
+  //
+  // A LEAF IS NOT A RESONATOR. Nothing about a leaf turning over rings; it is a
+  // scrape. Built out of raindrops, a canopy is a rain sound whatever else is
+  // done to it, because the ear hears the pitch and knows what made it.
+  if (!tone) {
+    const len = Math.max(3, Math.floor(decay * rate * 4));
+    for (let i = 0; i < len; i++) {
+      // Fast in, fast out. The shape is the whole character: a leaf is over
+      // before it has begun, and a slow one would be a brush on a drum.
+      out[(at + i) % out.length] +=
+        (Math.random() * 2 - 1) * GRAIN_ENV[((i * GRAIN_STEPS) / len) | 0] * level;
+    }
+    return;
+  }
+
   const w = (2 * Math.PI * hz) / rate;
   const r = Math.exp(-1 / (decay * rate));
   const c = 2 * r * Math.cos(w);
@@ -413,7 +452,7 @@ function addTransient(out, at, { hz, decay, level, rate }) {
   }
 }
 
-function fillTransients(out, rate, { perSecond, hzLow, hzHigh, decay, level }) {
+function fillTransients(out, rate, { perSecond, hzLow, hzHigh, decay, level, tone = 1 }) {
   // COUNTED FROM THE BUFFER'S OWN DURATION, not from the config's `seconds`.
   // The probe below is a different length from the loop it measures, and taking
   // the count from the config packed a whole loop's drops into eight seconds —
@@ -428,6 +467,7 @@ function fillTransients(out, rate, { perSecond, hzLow, hzHigh, decay, level }) {
       // drops sounding like a drum machine.
       level: level * Math.pow(Math.random(), 1.8),
       rate,
+      tone,
     });
   }
 }
@@ -463,17 +503,35 @@ const rmsOf = (a) => {
  * again the next time one of these numbers moves.
  */
 export function transientLoop(ctx, cfg) {
-  const n = Math.floor(cfg.seconds * DROP_RATE);
-  const buf = ctx.createBuffer(1, n, DROP_RATE);
+  // A layer may ask for a lower rate still. The rule is the same one DROP_RATE
+  // follows: store nothing the lowpass downstream is going to throw away. A
+  // canopy stops at 2.4 kHz, so 6 kHz is transparent for it and costs half.
+  const rate = cfg.rate ?? DROP_RATE;
+  const n = Math.floor(cfg.seconds * rate);
+  const buf = ctx.createBuffer(1, n, rate);
   const out = buf.getChannelData(0);
-  fillTransients(out, DROP_RATE, cfg);
+  fillTransients(out, rate, cfg);
 
-  const probe = new Float32Array(Math.floor(PROBE_SECONDS * TUNED_AT));
-  fillTransients(probe, TUNED_AT, cfg);
+  // ⚠️ THE PROBE IS ONLY NEEDED FOR THE RESONATOR PATH, and skipping it for
+  // grains is a real saving rather than a shortcut.
+  //
+  // A struck transient is excited by a fixed 1.5 MILLISECONDS of noise, so how
+  // many SAMPLES that is depends on the rate, and the energy reaching the
+  // resonator changes with it. That is the whole reason the probe exists.
+  //
+  // A grain has no such fixed window: its length is `decay * rate * 4`, so it
+  // scales WITH the rate and the mean square works out to `density * decay * 4 *
+  // level^2` — with no rate term in it at all. Nothing to correct, and a probe
+  // here would cost a second of dense grain generation at 48 kHz to discover a
+  // ratio of one.
+  if (cfg.tone !== 0) {
+    const probe = new Float32Array(Math.floor(PROBE_SECONDS * TUNED_AT));
+    fillTransients(probe, TUNED_AT, cfg);
 
-  const want = rmsOf(probe);
-  const got = rmsOf(out);
-  if (got > 0) for (let i = 0; i < n; i++) out[i] *= want / got;
+    const want = rmsOf(probe);
+    const got = rmsOf(out);
+    if (got > 0) for (let i = 0; i < n; i++) out[i] *= want / got;
+  }
 
   return buf;
 }

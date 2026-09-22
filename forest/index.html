@@ -33,10 +33,26 @@
   envelope as the hiss, so the two move together without anything coordinating
   them.
 
-  The transients are deliberately the shortest in the family: 1.5ms of decay
-  against a raindrop's 6. A leaf does not ring. fact:the-octave-lane-plays-the-root
-  is not the lesson here — the one that is, is that a resonator held past about
-  100ms becomes a PITCH, and a pitched leaf would be a wind chime.
+  ── THE FIRST VERSION SOUNDED LIKE RAIN, AND HERE IS WHY ───────────────────
+
+  The owner, on hearing it: "sounds like wind or waves with rain drops, not
+  necessarily leaves in trees."
+
+  IT WAS BUILT OUT OF RAINDROPS. The transient machinery this page borrowed from
+  /rain/ puts a short excitation through a RESONATOR, so every event comes out
+  PITCHED — because a drop striking something has a note, the note of the thing
+  it struck. A LEAF IS NOT A RESONATOR. Nothing about a leaf turning over rings;
+  it is a scrape. Measured on a single event: a raindrop scores 0.96 for
+  periodicity, and a leaf now scores 0.27.
+
+  AND THEY WERE COUNTABLE, which was the other half. At 34 a second each event
+  was separately audible, and separately audible events ARE drops however they
+  are shaped. Leaves do not arrive one at a time — a gust turns hundreds at once
+  and they merge. 380 a second now, and the merge IS the "shshsh".
+
+  WHICH MEANT THE SMOOTH NOISE LAYER HAD TO SHRINK TOO. A band of hiss plus
+  countable ticks is "wind with rain in it" — a fair description of what he
+  heard. The canopy is carried by the grains now, and the smooth layer is glue.
 -->
 
 <meta name="theme-color" content="#070b07">
@@ -105,7 +121,7 @@ const GUSTS = [[19.3, 0.34], [29.7, 0.26], [43.1, 0.20]];
 /** The bed the gusts sit on, dropped by exactly the mean the gusts add so the
  *  average level is the one that was set rather than the one that accumulated.
  *  Rain learned this the hard way, three times. */
-const LEAF_BASE = 0.30 - 0.5 * GUSTS.reduce((n, [, amount]) => n + amount, 0);
+const LEAF_BASE = 0.13 - 0.5 * GUSTS.reduce((n, [, amount]) => n + amount, 0) * 0.45;
 
 /**
  * A GUST, AS A SHAPE — the reverse of a wave, and that is the whole character.
@@ -154,6 +170,9 @@ runBed({
     lp.Q.value = 0.7;
     lp.frequency.setValueAtTime(TOP * 0.72, t0);
 
+    // SMALLER THAN IT WAS. A smooth noise band plus countable ticks is "wind
+    // with rain in it", which is exactly what the first version sounded like.
+    // The canopy is carried by the grains themselves now; this is only glue.
     const leaves = ctx.createBufferSource();
     leaves.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
     leaves.loop = true;
@@ -175,10 +194,23 @@ runBed({
     rustleTop.connect(rustleGain).connect(dest);
 
     for (const cfg of [
-      // THE SHORTEST DECAY IN THE FAMILY. A leaf does not ring — 1.5ms is a
-      // papery tick, and anything past about 100ms would be a wind chime.
-      { seconds: 149, perSecond: 34, hzLow: 1100, hzHigh: 3800, decay: 0.0015, level: 1.5 },
-      { seconds: 181, perSecond: 11, hzLow: 600, hzHigh: 1700, decay: 0.0035, level: 1.1 },
+      // ⚠️ UNPITCHED, AND FAR DENSER THAN ANYTHING ELSE IN THE FAMILY. Both of
+      // those are corrections; the header says what they are correcting.
+      //
+      // `tone: 0` removes the resonator entirely, so each event is a crinkle
+      // with no note in it. Measured, a raindrop scores 0.96 on periodicity and
+      // one of these scores 0.27 — the difference between a struck thing and a
+      // scraped one.
+      //
+      // And 380 a second against rain's 13, because individually countable
+      // events ARE raindrops however they are shaped. At this density they
+      // overlap into a texture, and the texture is the "shshsh".
+      // `rate: 6000` because the canopy stops at 2.4 kHz and everything above
+      // that is stored only to be filtered away. Halves both the buffer and the
+      // grains in it, which is most of the difference between a forest that
+      // takes a second to build and one that takes a quarter of that.
+      { seconds: 149, perSecond: 240, decay: 0.0035, level: 0.50, tone: 0, rate: 6000 },
+      { seconds: 181, perSecond: 95, decay: 0.0075, level: 0.34, tone: 0, rate: 6000 },
     ]) {
       const src = ctx.createBufferSource();
       src.buffer = transientLoop(ctx, cfg);
@@ -195,10 +227,10 @@ runBed({
     leafGain.gain.setValueAtTime(LEAF_BASE, t0);
     for (const [seconds, amount] of GUSTS) {
       const shape = envelopeLoop(ctx, seconds, gustShape);
-      modulate(ctx, sources, shape, amount, t0, leafGain.gain);
+      modulate(ctx, sources, shape, amount * 0.45, t0, leafGain.gain);
       // The rustle is driven from ZERO, so between gusts it nearly stops. That
       // contrast is the wind; a constant rustle would just be more hiss.
-      modulate(ctx, sources, shape, amount * 0.62, t0, rustleGain.gain);
+      modulate(ctx, sources, shape, amount * 1.35, t0, rustleGain.gain);
       // A gust does open the canopy up a little, but only a little — the last
       // three corrections on rain were all about keeping the top down.
       modulate(ctx, sources, shape, amount * 420, t0, lp.frequency);
