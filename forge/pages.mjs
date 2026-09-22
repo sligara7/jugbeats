@@ -192,6 +192,18 @@ const BEDS = [
     blurb: 'Steady rain, heard through a window. It fades out on its own.',
     accent: '#9fb9cc',
   },
+  {
+    dir: 'forest',
+    name: 'Forest',
+    blurb: 'Wind moving through a lot of leaves, in gusts.',
+    accent: '#9ed6a0',
+  },
+  {
+    dir: 'underwater',
+    name: 'Underwater',
+    blurb: 'Muffled and far from anything. The darkest of them.',
+    accent: '#6fb6d6',
+  },
 ];
 
 const cards = PALETTES.map((p) => `      <a class="card" href="${p.home}" style="--accent:${p.accent}">

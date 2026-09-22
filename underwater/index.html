@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Underwater</title>
+
+<!--
+  THE UNDERWATER PAGE — the most muffled bed in the family, on purpose.
+
+  From the owner's list: "the muffled, bubbling sound of being underwater
+  provides a highly insulated, womb-like audio environment. It completely cuts
+  out harsh higher frequencies."
+
+  WHY THIS ONE, AND WHY IT MAY BE THE BEST-AIMED OF ALL OF THEM. "Cuts out harsh
+  higher frequencies" is a description of a lowpass, and every correction the
+  owner has made by ear over two days has pulled this family downward: rain went
+  from a 3410 Hz top to 1700, from pink toward brown, twice quieter.
+
+  AND THE WOMB FRAMING IS NOT DECORATION. dec:idea-is-it-the-sound-or-the-car
+  recorded, while working out why babies sleep in cars, that the womb is a LOUD,
+  CONTINUOUS, LOW-PASSED place — blood flow and a muffled heartbeat — and that
+  this is the reasoning behind shushing an infant. A deliberately muffled bed is
+  the closest thing on the whole list to what the infant evidence actually points
+  at. Closer than rain. Closer than a brook.
+
+  ── WHAT IS DELIBERATELY NOT HERE ──────────────────────────────────────────
+
+  THE WHALE. The owner's note mentioned "a deep whale song" in the same breath,
+  and it is a different and much harder idea: muffled water is TEXTURE, and a
+  whale song is a MELODY — it has intent, shape and direction, and it is
+  recognisable the way a cat is. Everything in this family so far is noise-shaped
+  and therefore forgiving, because nobody knows exactly what distant surf should
+  sound like. Everybody knows roughly what a whale sounds like, and a synthesised
+  one that is slightly wrong is uncanny rather than merely imperfect. It wants
+  its own decision, and probably a recording.
+
+  ── THE ONE RISK WORTH NAMING ──────────────────────────────────────────────
+
+  A bed this dark may simply be inaudible on a phone speaker across a room, which
+  is exactly where it is meant to be used. A phone cannot reproduce much below
+  about 300 Hz at all — dec:drone-voiced-up exists in the game for that reason, and
+  voiced its drone UP two octaves to survive. So the bottom here is deliberately
+  not as low as "underwater" would suggest: it is muffled, not subsonic.
+-->
+
+<meta name="theme-color" content="#04080c">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Underwater">
+<meta property="og:description" content="Muffled, insulated, and very dark. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/underwater/">
+
+<link rel="stylesheet" href="../css/bed.css">
+<style>:root { --accent: #6fb6d6; --bg: #04080c; }</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Underwater</h1>
+    <p class="sub">Muffled and far from anything.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script type="module">
+import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, transientLoop } from '../js/bed.js';
+
+/**
+ * A LITTLE ABOVE THE OTHERS, WHICH LOOKS WRONG AND IS NOT.
+ *
+ * Loudness is judged mostly between 500 Hz and 4 kHz, and almost nothing here
+ * reaches that band — so at rain's ceiling this bed would be barely present.
+ * Same measured loudness, higher number.
+ */
+const CEILING = 0.26;
+
+/** Where everything stops. This is the muffling, and it is the whole idea. */
+const TOP = 620;
+
+/**
+ * NOT LOWER THAN THIS, and the reason is the speaker rather than the sea.
+ *
+ * A phone reproduces very little below about 300 Hz, so a bed that lives at 80
+ * would be inaudible across a room — present on headphones, absent where it is
+ * actually used. dec:drone-voiced-up hit this in the game and voiced its drone
+ * UP two octaves to survive it.
+ */
+const FLOOR = 170;
+
+/** Almost all the way to brown. Water is the one place where that is not a
+ *  compromise but a description. */
+const BROWN = 0.92;
+
+/** The swell. Slower than surf and far slower than a gust: this is pressure and
+ *  distance changing, not weather. */
+const SWELLS = [[41, 0.16], [59, 0.12], [83, 0.09]];
+
+const BODY_BASE = 0.62 - 0.5 * SWELLS.reduce((n, [, amount]) => n + amount, 0);
+
+/** A long, even rise and fall. Nothing underwater arrives. */
+const swellShape = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
+
+runBed({
+  title: 'Underwater',
+  ceiling: CEILING,
+  fadeIn: 12,
+  fadeOut: 90,
+
+  build(ctx, dest, t0, sources) {
+    // ── the pressure ──────────────────────────────────────────────────────
+    // The lowest thing here, constant, and what gives the bed its weight. Kept
+    // above FLOOR so a phone can actually produce it.
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 300, gain: 0.5, brown: BROWN }, dest, t0);
+
+    // ── the body ──────────────────────────────────────────────────────────
+    // Water moving. A narrow band, because the whole character of being under
+    // something is that almost nothing gets through.
+    const bodyGain = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(FLOOR, t0);
+    hp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.8;
+    lp.frequency.setValueAtTime(TOP, t0);
+
+    const body = ctx.createBufferSource();
+    body.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
+    body.loop = true;
+    body.connect(hp).connect(lp).connect(bodyGain).connect(dest);
+    body.start(t0);
+    sources.push(body);
+
+    bodyGain.gain.setValueAtTime(BODY_BASE, t0);
+    for (const [seconds, amount] of SWELLS) {
+      const shape = envelopeLoop(ctx, seconds, swellShape);
+      modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
+      // NO BRIGHTNESS ON THE SWELL. Everywhere else in the family a swell opens
+      // the top a little; here the top is the thing being withheld, and letting
+      // it breathe would undo the only idea this bed has.
+    }
+
+    // ── the bubbles ───────────────────────────────────────────────────────
+    // Rare, low and short. Two loops at coprime prime lengths so nothing ever
+    // repeats, and DELIBERATELY SPARSE — perSecond under one, where rain's near
+    // layer runs at thirteen. A bubble every second or two is a fish tank; every
+    // few seconds is the sea.
+    //
+    // DECAY STAYS SHORT despite the low pitch, which is the lesson rain paid for:
+    // a resonator held past about 100ms stops being a strike and becomes a PITCH,
+    // and a pitched bubble is a marimba.
+    const bubbleTop = ctx.createBiquadFilter();
+    bubbleTop.type = 'lowpass';
+    bubbleTop.frequency.setValueAtTime(TOP * 1.4, t0);
+    bubbleTop.Q.value = 0.7;
+    const bubbleGain = ctx.createGain();
+    bubbleGain.gain.value = 0.5;
+    bubbleTop.connect(bubbleGain).connect(dest);
+
+    for (const cfg of [
+      { seconds: 127, perSecond: 0.9, hzLow: 190, hzHigh: 520, decay: 0.012, level: 1.5 },
+      { seconds: 167, perSecond: 0.35, hzLow: 300, hzHigh: 800, decay: 0.008, level: 1.1 },
+    ]) {
+      const src = ctx.createBufferSource();
+      src.buffer = transientLoop(ctx, cfg);
+      src.loop = true;
+      src.connect(bubbleTop);
+      src.start(t0);
+      sources.push(src);
+    }
+  },
+});
+</script>
+</body>
+</html>

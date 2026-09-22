@@ -314,3 +314,166 @@ export function runBed(character) {
     if (!document.hidden && ctx && ctx.state === 'suspended') ctx.resume();
   });
 }
+
+// ---------------------------------------------------------------------------
+// TRANSIENTS — the small struck sounds a bed is speckled with
+// ---------------------------------------------------------------------------
+//
+// Raindrops on an awning, leaves turning over in a gust, a bubble leaving the
+// silt. All the same thing: a very short excitation through a resonator, baked
+// into a looping buffer because a bed may not schedule anything after the tap.
+//
+// LIFTED OUT OF /rain/ WHEN A THIRD BED WANTED THEM, which was the threshold
+// written down when /waves/ was first copied: one copy is defensible, two is the
+// point at which the common part comes out. Nothing below changed in the move —
+// the numbers rain was tuned to are the numbers it still passes in.
+//
+// THE TWO HARD-WON LESSONS ARE IN THE COMMENTS BELOW AND ARE NOT TIDY DETAIL:
+// a resonator held past about 100ms stops being a strike and becomes a PITCH,
+// which sounds like metal; and `level` does not survive a change of sample rate,
+// so it is measured against a probe rather than trusted.
+
+/**
+ * A loop of rain, with the drops already in it.
+ *
+ * Density is the thing to get right: too few and it is a dripping tap, too many
+ * and the drops merge into the hiss they are supposed to sit on top of. These
+ * are only the ones an ear picks out individually — the mass of rain is the
+ * noise layer underneath.
+ *
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN, and these numbers are all
+ * stated BEFORE the NOISE and DROPS multipliers. Raw, the two drop loops sit at
+ * about 0.48 of the hiss. As the bed stands — noise at 0.45, band narrowed,
+ * drops at 0.65 — the hiss reaches the mix at about 0.023 rms and the drops at
+ * about 0.012, which is 0.51 of it. Peaks stay near 0.46 and 0.31 before their
+ * multiplier, so nothing clips before the ceiling.
+ */
+/**
+ * THE DROP LOOPS RUN AT A LOWER SAMPLE RATE THAN THE CONTEXT, which is what pays
+ * for them being minutes long instead of seconds.
+ *
+ * Everything these feed is lowpassed at AWNING_TOP, so nothing above about 4 kHz
+ * survives to be heard and storing it at 48 kHz is storing silence at great
+ * expense. 12 kHz leaves headroom over the highest resonance any drop is given
+ * and costs a quarter as much. It is the same trade the baked drum kit already
+ * makes at 22050, for the same reason.
+ */
+export const DROP_RATE = 12000;
+
+/** The rate the drops were tuned at, and the level they are held to. */
+const TUNED_AT = 48000;
+/**
+ * HOW LONG THE PROBE IS, AND IT IS NOT ARBITRARY. Drop levels are drawn from a
+ * heavy-tailed distribution — mostly quiet with an occasional near one — so a
+ * short measurement of their rms is noisy. Measured over eight runs: an 8-second
+ * probe varies by 19%, 20s by 6.6%, 40s by 5.5% and 80s by 5.1%. 40 is where it
+ * stops being worth more time.
+ *
+ * WORTH KNOWING ALONGSIDE IT: the loops this is matching were 19.7 and 23.3
+ * seconds, which carry about 7% of that same variance themselves. The level his
+ * ear approved was never precise to better than that, so "parity" here means
+ * inside the noise the original already had.
+ */
+const PROBE_SECONDS = 40;
+
+/**
+ * ONE DROP, WRITTEN STRAIGHT INTO A BUFFER.
+ *
+ * A short noise burst through a two-pole resonator, which is about the cheapest
+ * thing that sounds struck rather than clicked. The resonance is what gives a
+ * drop its pitch — a small drop on glass pings high, a big one on a sill thuds —
+ * and randomising it across drops is most of why a loop of them reads as rain
+ * rather than as a machine ticking.
+ *
+ * `at` may run past the end: the caller writes modulo the length, so a drop that
+ * starts near the end finishes at the beginning and the loop has no seam.
+ */
+function addTransient(out, at, { hz, decay, level, rate }) {
+  const w = (2 * Math.PI * hz) / rate;
+  const r = Math.exp(-1 / (decay * rate));
+  const c = 2 * r * Math.cos(w);
+  const r2 = r * r;
+  const burst = Math.max(2, Math.floor(rate * 0.0015));   // the impact itself
+  const tail = Math.floor(decay * rate * 5);              // what rings after it
+
+  // NORMALISED BY (1 - r), AND IT IS NOT OPTIONAL. A two-pole resonator has a
+  // gain at resonance of roughly 1/(1 - r), which at these decay times is about
+  // 290x. Measured before this line existed: peaks of 16 and 43 against a full
+  // scale of 1, which is not a rain sound, it is destruction. Normalising here
+  // also makes `level` mean the same thing whatever `decay` is, so a long drop
+  // and a short one are equally loud rather than wildly not.
+  const norm = (1 - r) * level;
+
+  let y1 = 0, y2 = 0;
+  for (let i = 0; i < burst + tail; i++) {
+    const x = i < burst ? (Math.random() * 2 - 1) : 0;
+    const y = x + c * y1 - r2 * y2;
+    y2 = y1; y1 = y;
+    out[(at + i) % out.length] += y * norm;
+  }
+}
+
+function fillTransients(out, rate, { perSecond, hzLow, hzHigh, decay, level }) {
+  // COUNTED FROM THE BUFFER'S OWN DURATION, not from the config's `seconds`.
+  // The probe below is a different length from the loop it measures, and taking
+  // the count from the config packed a whole loop's drops into eight seconds —
+  // which read as 310% too loud and would have been scaled INTO the mix.
+  const count = Math.round((out.length / rate) * perSecond);
+  for (let i = 0; i < count; i++) {
+    addTransient(out, Math.floor(Math.random() * out.length), {
+      // Log-spaced, so the ear hears the range as even rather than crowded high.
+      hz: hzLow * Math.pow(hzHigh / hzLow, Math.random()),
+      decay: decay * (0.6 + Math.random() * 0.8),
+      // Mostly quiet with an occasional near one, which is what stops a loop of
+      // drops sounding like a drum machine.
+      level: level * Math.pow(Math.random(), 1.8),
+      rate,
+    });
+  }
+}
+
+const rmsOf = (a) => {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * a[i];
+  return Math.sqrt(s / a.length);
+};
+
+/**
+ * A loop of rain, with the drops already in it.
+ *
+ * Density is the thing to get right: too few and it is a dripping tap, too many
+ * and the drops merge into the hiss they are supposed to sit on top of. These
+ * are only the ones an ear picks out individually — the mass of rain is the
+ * noise layer underneath.
+ *
+ * `level` IS SET AGAINST THE HISS RATHER THAN CHOSEN, and the ratio his ear
+ * settled on is 0.57. See DROPS for how that is held.
+ *
+ * ⚠️ AND THE LEVEL IS MEASURED AGAINST A PROBE RATHER THAN TRUSTED, because
+ * `level` does NOT survive a change of sample rate on its own. The excitation is
+ * 1.5 MILLISECONDS of noise, so at 12 kHz it is 18 samples where at 48 kHz it is
+ * 72, and a quarter of the energy goes into the resonator. Measured when
+ * DROP_RATE arrived: the same configuration came out 44% quieter.
+ *
+ * Two analytic corrections were tried and both were wrong — sqrt of the rate
+ * ratio overshot by 17%, and a peak-matched probe by 110% — because peak and rms
+ * do not scale the same way with burst length. So the buffer is simply compared
+ * against a short probe generated at the rate these were TUNED at, and scaled to
+ * match. It costs a few milliseconds once, it is exact, and it cannot be wrong
+ * again the next time one of these numbers moves.
+ */
+export function transientLoop(ctx, cfg) {
+  const n = Math.floor(cfg.seconds * DROP_RATE);
+  const buf = ctx.createBuffer(1, n, DROP_RATE);
+  const out = buf.getChannelData(0);
+  fillTransients(out, DROP_RATE, cfg);
+
+  const probe = new Float32Array(Math.floor(PROBE_SECONDS * TUNED_AT));
+  fillTransients(probe, TUNED_AT, cfg);
+
+  const want = rmsOf(probe);
+  const got = rmsOf(out);
+  if (got > 0) for (let i = 0; i < n; i++) out[i] *= want / got;
+
+  return buf;
+}

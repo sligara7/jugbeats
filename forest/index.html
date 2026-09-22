@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Forest</title>
+
+<!--
+  THE FOREST PAGE — wind through a lot of leaves.
+
+  From the owner's list: "a steady, gentle breeze moving through a dense forest
+  creates a soothing 'shshsh' sound... has a very organic wave-like rise and fall
+  as the wind blows in gusts."
+
+  WHY THIS ONE WAS PICKED FIRST of the four. It needs nothing new: a gust is a
+  wave with a different shape, and leaves are transients like raindrops are. Both
+  mechanisms already exist and are already proved, so this is a character rather
+  than a project.
+
+  ── A GUST IS THE MIRROR IMAGE OF A WAVE ───────────────────────────────────
+
+  Both are one slow shape, and the shapes are opposites. A wave gathers slowly
+  and runs out for longer than it took to build. A GUST ARRIVES — it hits the
+  canopy in a second or two and then dies away over five or ten. Building slowly
+  and dying fast is surf; building fast and dying slowly is wind, and getting
+  that backwards is the whole difference between the two beds.
+
+  ── AND THE LEAVES ANSWER THE WIND ─────────────────────────────────────────
+
+  The part that makes it a FOREST rather than a filter sweep: the rustle gets
+  busier when the gust arrives. In life that is obvious — harder wind turns more
+  leaves — and here it means the transient layer is modulated by the SAME
+  envelope as the hiss, so the two move together without anything coordinating
+  them.
+
+  The transients are deliberately the shortest in the family: 1.5ms of decay
+  against a raindrop's 6. A leaf does not ring. fact:the-octave-lane-plays-the-root
+  is not the lesson here — the one that is, is that a resonator held past about
+  100ms becomes a PITCH, and a pitched leaf would be a wind chime.
+-->
+
+<meta name="theme-color" content="#070b07">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Forest">
+<meta property="og:description" content="Wind through a lot of leaves. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/forest/">
+
+<link rel="stylesheet" href="../css/bed.css">
+<style>:root { --accent: #9ed6a0; --bg: #070b07; }</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Forest</h1>
+    <p class="sub">Wind moving through a lot of leaves.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script type="module">
+import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, transientLoop } from '../js/bed.js';
+
+/** In line with the other beds. Leaves sit higher than rain, so no higher. */
+const CEILING = 0.19;
+
+/** Where the canopy stops. Leaves genuinely go higher than this; eight hours
+ *  beside a sleeping baby is the reason they do not here. */
+const TOP = 2400;
+
+/** How far the noise is tilted from pink towards brown. Less than rain's,
+ *  because a canopy IS a brighter thing than rain on canvas and pretending
+ *  otherwise would leave it sounding like a distant motorway. */
+const BROWN = 0.45;
+
+/**
+ * THE GUSTS — and note the periods are the shortest in the family.
+ *
+ * Coprime, so no two share a multiple and the wind never repeats a pattern.
+ * A gust every twenty seconds or so on average, with the occasional big one
+ * when three coincide.
+ */
+const GUSTS = [[19.3, 0.34], [29.7, 0.26], [43.1, 0.20]];
+
+/** The bed the gusts sit on, dropped by exactly the mean the gusts add so the
+ *  average level is the one that was set rather than the one that accumulated.
+ *  Rain learned this the hard way, three times. */
+const LEAF_BASE = 0.30 - 0.5 * GUSTS.reduce((n, [, amount]) => n + amount, 0);
+
+/**
+ * A GUST, AS A SHAPE — the reverse of a wave, and that is the whole character.
+ *
+ * ARRIVES over about a fifth of the cycle, holds barely at all, and DIES over
+ * more than half. Surf builds slowly and runs out; wind hits and fades. Get this
+ * backwards and the forest sounds like the sea with the treble up.
+ */
+function gustShape(t) {
+  const RISE = 0.18;
+  const FALL = 0.62;
+  if (t < RISE) {
+    // Fast but not instant — a gust has a leading edge, not a click.
+    return Math.pow(t / RISE, 0.75);
+  }
+  if (t < RISE + FALL) {
+    return Math.exp(-2.6 * ((t - RISE) / FALL));
+  }
+  // Still air between gusts. Not silence: a canopy is never completely still.
+  const u = (t - RISE - FALL) / (1 - RISE - FALL);
+  return Math.exp(-2.6) * (1 - 0.5 * u);
+}
+
+runBed({
+  title: 'Forest',
+  ceiling: CEILING,
+  fadeIn: 10,
+  fadeOut: 90,
+
+  build(ctx, dest, t0, sources) {
+    // ── the air ───────────────────────────────────────────────────────────
+    // The wind itself rather than what it is blowing through. Constant, low, and
+    // the reason the bed has somewhere to sit.
+    noiseLayer(ctx, sources, { seconds: 11.7, cut: 260, gain: 0.34, brown: BROWN }, dest, t0);
+
+    // ── the leaves ────────────────────────────────────────────────────────
+    // The "shshsh": a band of noise with the bottom taken out, because leaves
+    // have no low end of their own and leaving it in muddies the air layer.
+    const leafGain = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(520, t0);
+    hp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(TOP * 0.72, t0);
+
+    const leaves = ctx.createBufferSource();
+    leaves.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
+    leaves.loop = true;
+    leaves.connect(hp).connect(lp).connect(leafGain).connect(dest);
+    leaves.start(t0);
+    sources.push(leaves);
+
+    // ── the rustle ────────────────────────────────────────────────────────
+    // Individual leaves turning over. Two loops at coprime PRIME lengths, minutes
+    // long, for the reason rain's are: a pattern an ear can learn is a pattern
+    // that wakes somebody up.
+    const rustleGain = ctx.createGain();
+    rustleGain.gain.setValueAtTime(0, t0);
+
+    const rustleTop = ctx.createBiquadFilter();
+    rustleTop.type = 'lowpass';
+    rustleTop.frequency.setValueAtTime(TOP, t0);
+    rustleTop.Q.value = 0.7;
+    rustleTop.connect(rustleGain).connect(dest);
+
+    for (const cfg of [
+      // THE SHORTEST DECAY IN THE FAMILY. A leaf does not ring — 1.5ms is a
+      // papery tick, and anything past about 100ms would be a wind chime.
+      { seconds: 149, perSecond: 34, hzLow: 1100, hzHigh: 3800, decay: 0.0015, level: 1.5 },
+      { seconds: 181, perSecond: 11, hzLow: 600, hzHigh: 1700, decay: 0.0035, level: 1.1 },
+    ]) {
+      const src = ctx.createBufferSource();
+      src.buffer = transientLoop(ctx, cfg);
+      src.loop = true;
+      src.connect(rustleTop);
+      src.start(t0);
+      sources.push(src);
+    }
+
+    // ── the wind ──────────────────────────────────────────────────────────
+    // ONE ENVELOPE DRIVES BOTH LAYERS, which is what makes this a forest rather
+    // than a filter sweep: when the gust arrives the leaves get louder AND more
+    // of them turn over, because in life harder wind turns more leaves.
+    leafGain.gain.setValueAtTime(LEAF_BASE, t0);
+    for (const [seconds, amount] of GUSTS) {
+      const shape = envelopeLoop(ctx, seconds, gustShape);
+      modulate(ctx, sources, shape, amount, t0, leafGain.gain);
+      // The rustle is driven from ZERO, so between gusts it nearly stops. That
+      // contrast is the wind; a constant rustle would just be more hiss.
+      modulate(ctx, sources, shape, amount * 0.62, t0, rustleGain.gain);
+      // A gust does open the canopy up a little, but only a little — the last
+      // three corrections on rain were all about keeping the top down.
+      modulate(ctx, sources, shape, amount * 420, t0, lp.frequency);
+    }
+  },
+});
+</script>
+</body>
+</html>
