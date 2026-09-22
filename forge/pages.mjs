@@ -204,6 +204,12 @@ const BEDS = [
     blurb: 'Muffled and far from anything. The darkest of them.',
     accent: '#6fb6d6',
   },
+  {
+    dir: 'stream',
+    name: 'Stream',
+    blurb: 'Water running over stones, steadily. Built from a recording.',
+    accent: '#8fd3c7',
+  },
 ];
 
 const cards = PALETTES.map((p) => `      <a class="card" href="${p.home}" style="--accent:${p.accent}">

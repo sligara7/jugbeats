@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stream</title>
+
+<!--
+  THE STREAM PAGE — built from four recordings of one, before a line of it was
+  written.
+
+  ── THIS IS THE IDEA I ARGUED AGAINST ──────────────────────────────────────
+
+  When the owner first listed it, this bed was recorded as reachable but
+  probably unwise: "a brook is BRIGHT, and every piece of evidence this project
+  has collected points away from bright... A convincing brook may be a bad bed
+  for the same reasons rain-on-stone was" (dec:idea-more-beds).
+
+  He sent recordings instead of arguing. The measurement says a gentle stream
+  carries about 10% of its energy above 2 kHz, which IS bright by this family's
+  standards — and it is what a stream is. The objection was not wrong about the
+  facts; it was wrong to be a reason not to build the thing.
+
+  ── WHAT THE RECORDINGS SAY ────────────────────────────────────────────────
+
+  Four clips, median across all of them:
+
+    centroid   1219 Hz          bright: wind measured 810
+    peak        826 Hz  Q 1.5   broader than wind's Q 2.0
+    sd/mean     0.51            STEADY: wind measured 1.67
+    onsets      1.8 a second    no discrete events
+    energy      53% in 500-1k, 32% in 1-2k, 10% above 2k
+
+  THE STEADINESS IS THE HEADLINE. Wind's whole character is that it arrives in
+  peaky gusts — its envelope varies three times as much as this. A stream does
+  not gust. It runs. Built with wind's envelope this would sound like wind with
+  the treble up, which is exactly the mistake /forest/ made in reverse.
+
+  AND THE SHAPE IS TWO LAYERS, NOT ONE BAND. A single flat bandpass spread the
+  energy evenly and measured 40% in each of 500-1k and 1-2k, where the real
+  thing is weighted 53/32 with a tail on top. So: a main band carrying the body
+  of the water, and a quieter high band for the surface detail.
+
+  Fitted against the recordings rather than chosen:
+
+    main band 620-1250 Hz, tail 1300-4000 Hz at 0.36, envelope squared
+    -> centroid 1183, sd/mean 0.45, 54% / 33% / 11%
+       against real   1219,         0.51, 53% / 32% / 10%
+
+  ── THE SAME CAVEAT AS /forest/, AND IT IS SHARPER HERE ────────────────────
+
+  These came off the same phone as the wind clips, and BOTH SETS PEAK AT ABOUT
+  830-890 Hz despite being completely unrelated sources. That is almost
+  certainly the recording chain imposing its own shape, so the absolute peak
+  position is not to be trusted.
+
+  What IS trustworthy is the difference between the two, because the instrument
+  was identical: a stream is broader, reaches much higher, and is far steadier.
+  Those three comparisons are what this page is actually built on.
+-->
+
+<meta name="theme-color" content="#06090c">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Stream">
+<meta property="og:description" content="A gentle stream, running steadily. Pick how long, and put the phone across the room.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/stream/">
+
+<link rel="stylesheet" href="../css/bed.css">
+<style>:root { --accent: #8fd3c7; --bg: #06090c; }</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Stream</h1>
+    <p class="sub">Water running over stones, steadily.</p>
+
+    <p class="place">Put the phone across the room — <strong>not</strong> in the crib or the cot.
+      Then turn the volume up until you can just hear it from where the baby is.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script type="module">
+import { runBed, pinkLoop, envelopeLoop, modulate } from '../js/bed.js';
+
+/**
+ * Lower than the other bright beds, because this one genuinely reaches above
+ * 2 kHz and that is the part that turns harsh over eight hours
+ * (dec:idea-how-loud-and-for-how-long). The recordings say a stream is bright;
+ * they do not say it has to be loud.
+ */
+const CEILING = 0.17;
+
+/** The body of the water. Fitted: 54% of the energy lands in 500-1k against a
+ *  measured 53%. */
+const MAIN = [620, 1250];
+
+/** The surface detail on top. 0.36 is what puts 11% above 2 kHz against a
+ *  measured 10% — a single wider band could not do both halves at once. */
+const TAIL = [1300, 4000];
+const TAIL_GAIN = 0.36;
+
+/**
+ * HOW IT MOVES, AND IT BARELY DOES — which is the whole difference from
+ * /forest/.
+ *
+ * Measured sd/mean is 0.51 here and 1.67 for wind. Wind arrives in peaky gusts;
+ * a stream does not gust, it RUNS. The envelope is squared rather than raised to
+ * the fifth, and it sits on a high floor, so the movement is a slow breathing
+ * rather than an arrival.
+ */
+const FLOW_CYCLES = [[9.7, 1.0], [14.3, 0.7], [23.9, 0.5]];
+const FLOW_POWER = 2;
+const FLOW_FLOOR = 0.5;
+const FLOW_DEPTH = 0.55;
+const FLOW_SECONDS = 179;
+const FLOW_RATE = 400;
+
+function flowShape(t) {
+  const secs = t * FLOW_SECONDS;
+  let g = 0;
+  let max = 0;
+  for (const [period, amount] of FLOW_CYCLES) {
+    g += amount * (0.5 - 0.5 * Math.cos((2 * Math.PI * secs) / period));
+    max += amount;
+  }
+  return FLOW_FLOOR + FLOW_DEPTH * Math.pow(g / max, FLOW_POWER);
+}
+
+/** A band of noise, built the same way twice. */
+function band(ctx, sources, [lo, hi], seconds, gain, dest, t0) {
+  const src = ctx.createBufferSource();
+  src.buffer = pinkLoop(ctx, seconds, { rate: 16000 });
+  src.loop = true;
+
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.setValueAtTime(lo, t0);
+  hp.Q.value = 0.9;
+
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(hi, t0);
+  lp.Q.value = 0.9;
+
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  src.connect(hp).connect(lp).connect(g).connect(dest);
+  src.start(t0);
+  sources.push(src);
+  return g;
+}
+
+runBed({
+  title: 'Stream',
+  ceiling: CEILING,
+  fadeIn: 10,
+  fadeOut: 90,
+
+  build(ctx, dest, t0, sources) {
+    // Everything meets here so one envelope moves the whole stream together.
+    // The two bands are not independent parts of a mix — they are one sound
+    // measured in two halves, and moving them apart would pull it into two.
+    const flow = ctx.createGain();
+    flow.gain.setValueAtTime(0, t0);
+    flow.connect(dest);
+
+    // Coprime prime lengths, so the two layers never line up the same way.
+    band(ctx, sources, MAIN, 53, 1.0, flow, t0);
+    band(ctx, sources, TAIL, 71, TAIL_GAIN, flow, t0);
+
+    const shape = envelopeLoop(ctx, FLOW_SECONDS, flowShape, FLOW_RATE);
+    modulate(ctx, sources, shape, 1.0, t0, flow.gain);
+  },
+});
+</script>
+</body>
+</html>
