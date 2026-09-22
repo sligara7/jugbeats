@@ -134,7 +134,7 @@ import { runBed, pinkLoop, envelopeLoop, modulate, transientLoop } from '../js/b
  */
 
 /** Fitted: 67% of the energy lands in 500-1k against a measured 75%. */
-const MAIN = [470, 960];
+const MAIN = [440, 900];
 
 /** The shoulder underneath. 0.30 puts about 19% in 250-500, which is what the
  *  recording has; a single wider band could not hold both proportions. */
@@ -150,17 +150,47 @@ const SHOULDER_GAIN = 0.30;
 const CEILING = 0.20;
 
 /**
- * HOW IT MOVES. Measured sd/mean is 0.75 — more than a stream's 0.51 and far
- * less than wind's 1.67. Water surging past has some of a gust's character and
- * none of its violence, so the envelope is raised to the fourth power where
- * /forest/ uses five and /stream/ uses two.
+ * HOW IT MOVES — and the previous answer to this made it sound like wind.
+ *
+ * The owner: "it sounds like the howling wind, not the deep underwater."
+ *
+ * ⚠️ MATCHING sd/mean IS NOT MATCHING THE SHAPE. Measured sd/mean is 0.75, and a
+ * summed cosine raised to the FOURTH power hits it — but a high power on a
+ * summed cosine IS A GUST: long quiet, sudden arrival. /forest/ uses the fifth
+ * power for exactly that reason. Two envelopes can share a scalar and sound
+ * nothing alike, and the shape is what the ear names.
+ *
+ * So: squared, with the variance coming from a second FASTER layer instead of
+ * from a steeper curve. Water moving past rather than weather arriving.
+ *
+ * AND THE FAST LAYER WAS HERE BEFORE AND I DELETED IT. It is what cured the
+ * jet-cabin version; the measured rebuild replaced it with a single peaky swell
+ * and dropped it, so the bed reverted to a different wrong answer.
  */
 const SWELL_CYCLES = [[11.3, 1.0], [17.9, 0.7], [29.3, 0.5]];
-const SWELL_POWER = 4;
-const SWELL_FLOOR = 0.30;
-const SWELL_DEPTH = 0.95;
+const SWELL_POWER = 2;
+const SWELL_FLOOR = 0.18;
+const SWELL_DEPTH = 0.55;
 const SWELL_SECONDS = 181;
+
+/** The faster half: water moving past, every ten to thirty seconds. Added back
+ *  after it was removed, because its absence is what let the slow swell become a
+ *  gust. */
+const FLOW_CYCLES = [[11.3, 1.0], [17.9, 0.7], [29.3, 0.5]];
+const FLOW_DEPTH = 0.5;
+const FLOW_SECONDS = 163;
 const SWELL_RATE = 8000;
+
+function flowShape(t) {
+  const secs = t * FLOW_SECONDS;
+  let g = 0;
+  let max = 0;
+  for (const [period, amount] of FLOW_CYCLES) {
+    g += amount * (0.5 - 0.5 * Math.cos((2 * Math.PI * secs) / period));
+    max += amount;
+  }
+  return g / max;
+}
 
 function swellShape(t) {
   const secs = t * SWELL_SECONDS;
@@ -211,11 +241,22 @@ runBed({
     const shape = envelopeLoop(ctx, SWELL_SECONDS, swellShape, SWELL_RATE);
     modulate(ctx, sources, shape, 1.0, t0, swell.gain);
 
+    const flow = envelopeLoop(ctx, FLOW_SECONDS, flowShape, SWELL_RATE);
+    modulate(ctx, sources, flow, FLOW_DEPTH, t0, swell.gain);
+
     // ── the bubbles ───────────────────────────────────────────────────────
-    // THE MOST ONSETS OF ANY RECORDING TAKEN — 3.6 a second, against wind's 1.4
-    // and a stream's 1.8. They are not decoration on this bed, they are what
-    // makes it water rather than a filter setting, and the earlier version had
-    // them at a third of this.
+    // ⚠️ THE BUBBLES ARE THE WHOLE DIFFERENCE FROM WIND, AND THEY WERE A GARNISH.
+    //
+    // Measured, real underwater has 3.6 onsets a second — the most of any
+    // recording taken, against wind's 1.4 — and it is the PEAKIEST of the three,
+    // with 44% of its energy in the loudest tenth of the time against wind's
+    // 31%. That burstiness comes from the bubbles, not from the swell.
+    //
+    // At the previous gain of 0.55 they measured 0.34x the bed: audible, and
+    // nowhere near carrying the character. What was left was a narrow noise band
+    // with a slow swell on it, which is a description of wind. At 1.6 they sit
+    // at roughly 0.9x and are a co-equal part of the sound rather than a
+    // decoration on it.
     //
     // Short decays for the reason /rain/ paid for: a resonator held past about
     // 100ms stops being a strike and becomes a PITCH, and a pitched bubble is a
@@ -225,7 +266,7 @@ runBed({
     top.frequency.setValueAtTime(1400, t0);
     top.Q.value = 0.7;
     const gain = ctx.createGain();
-    gain.gain.value = 0.55;
+    gain.gain.value = 1.6;
     top.connect(gain).connect(dest);
 
     for (const cfg of [
