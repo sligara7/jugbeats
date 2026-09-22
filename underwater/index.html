@@ -59,6 +59,28 @@
   identifying feature and it was being suppressed. Three times as many now, and
   allowed up to 2200 Hz where an ear can actually find them.
 
+  ── WHAT THE DEEP-SEA RESEARCH CONFIRMED, AND WHAT IT ADDED ────────────────
+
+  The owner sent an account of deep ocean acoustics after this bed was lowered.
+  It recommends "a heavy brown noise base" and "an aggressive low-pass filter set
+  around 150 Hz to 300 Hz" — and the change had already gone out at full brown
+  with the top at 260. Two routes to the same numbers, which is the only kind of
+  agreement worth much.
+
+  WHAT IT ADDED WAS THE GHOST. "What remains of surface weather is just a faint,
+  continuous, ghost-like hum at the higher end of the deep-sea spectrum." That is
+  a DEPTH CUE and this bed did not have one: dark alone is muffled, but dark with
+  something faint and far above it is DEEP, because the ear reads the gap between
+  them as distance. See SURFACE.
+
+  ⚠️ AND ONE THING IN IT CANNOT BE BUILT, WHICH IS WORTH SAYING RATHER THAN
+  QUIETLY IGNORING. The research puts the real energy between 1 and 100 Hz —
+  tectonic rumble, and whales at 10 to 40 Hz "often felt as pressure vibrations
+  rather than heard". A phone speaker produces essentially none of that. FLOOR
+  sits at 40 Hz as a gesture at it, but the honest position is that the most
+  characteristic part of the deep ocean is exactly the part this delivery cannot
+  reproduce. That is a limit of the speaker, not of the idea.
+
   ── THE RISK THAT STILL STANDS ─────────────────────────────────────────────
 
   A bed this dark may be inaudible on a phone speaker across a room, which is
@@ -176,7 +198,26 @@ const SWELLS = [[41, 0.16], [59, 0.12], [83, 0.09]];
  * So this is a second, faster timescale on top of the swell. A jet has nothing
  * at this rate; moving water has little else.
  */
-const FLOW = [[7.3, 0.10], [11.9, 0.075], [17.3, 0.055]];
+const FLOW = [[11.3, 0.10], [13.9, 0.075], [16.7, 0.055]];
+
+/**
+ * THE GHOST OF THE SURFACE — the one element the deep-sea research named that
+ * this bed did not have.
+ *
+ * "The crisp, sharp sounds we associate with the ocean surface are completely
+ * filtered out by the time you go deep. What remains of surface weather is just
+ * a faint, continuous, ghost-like hum at the higher end of the deep-sea
+ * spectrum."
+ *
+ * THAT IS A DEPTH CUE, AND IT IS THE REASON TO BOTHER. A bed that is only dark
+ * is muffled; a bed that is dark WITH something faint and far above it is deep.
+ * The ear reads the gap between the two as distance, and without the faint thing
+ * there is no gap to read.
+ *
+ * Kept at a level where it is not separately identifiable — if you can tell what
+ * it is, it is too loud and it stops being a ghost.
+ */
+const SURFACE = { cut: 1900, floor: 700, gain: 0.30 };
 
 const BODY_BASE = 0.62
   - 0.5 * SWELLS.reduce((n, [, amount]) => n + amount, 0)
@@ -205,15 +246,31 @@ runBed({
     hp.type = 'highpass';
     hp.frequency.setValueAtTime(FLOOR, t0);
     hp.Q.value = 0.6;
+    // ⚠️ TWO LOWPASS STAGES, NOT ONE, AND THE SECOND ONE IS LOAD-BEARING.
+    //
+    // "Apply an AGGRESSIVE low-pass filter" is what the deep-sea account asked
+    // for, and one biquad is 12 dB an octave, which is not aggressive. Measured
+    // with a single stage: the bed still put ten times more energy into the
+    // 700-1900 Hz band than the surface ghost did, purely as leakage — so the
+    // ghost was inaudible and the one thing giving this bed any sense of DEPTH
+    // was being drowned by a filter skirt.
+    //
+    // Cascaded, it is 24 dB an octave, the leakage drops away, and the faint
+    // thing far above can actually be the faint thing far above.
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.8;
     lp.frequency.setValueAtTime(TOP, t0);
 
+    const lp2 = ctx.createBiquadFilter();
+    lp2.type = 'lowpass';
+    lp2.Q.value = 0.6;
+    lp2.frequency.setValueAtTime(TOP, t0);
+
     const body = ctx.createBufferSource();
     body.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
     body.loop = true;
-    body.connect(hp).connect(lp).connect(bodyGain).connect(dest);
+    body.connect(hp).connect(lp).connect(lp2).connect(bodyGain).connect(dest);
     body.start(t0);
     sources.push(body);
 
@@ -232,14 +289,44 @@ runBed({
     for (const [seconds, amount] of SWELLS) {
       const shape = envelopeLoop(ctx, seconds, swellShape);
       modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
-      modulate(ctx, sources, shape, amount * 900, t0, lp.frequency);
+      modulate(ctx, sources, shape, amount * 900, t0, lp.frequency, lp2.frequency);
     }
 
     // The faster movement, which is the half a jet cannot have.
     for (const [seconds, amount] of FLOW) {
       const shape = envelopeLoop(ctx, seconds, swellShape);
       modulate(ctx, sources, shape, amount, t0, bodyGain.gain);
-      modulate(ctx, sources, shape, amount * 1100, t0, lp.frequency);
+      modulate(ctx, sources, shape, amount * 1100, t0, lp.frequency, lp2.frequency);
+    }
+
+    // ── the ghost of the surface ──────────────────────────────────────────
+    // Weather happening a long way up, arriving as almost nothing. Slowly
+    // breathing on its own cycle so it never sits still enough to be located.
+    {
+      const ghostGain = ctx.createGain();
+      ghostGain.gain.setValueAtTime(SURFACE.gain * 0.72, t0);
+      const ghp = ctx.createBiquadFilter();
+      ghp.type = 'highpass';
+      ghp.frequency.setValueAtTime(SURFACE.floor, t0);
+      ghp.Q.value = 0.6;
+      const glp = ctx.createBiquadFilter();
+      glp.type = 'lowpass';
+      glp.frequency.setValueAtTime(SURFACE.cut, t0);
+      glp.Q.value = 0.7;
+
+      const ghost = ctx.createBufferSource();
+      ghost.buffer = pinkLoop(ctx, 17.3, { brown: 0.5 });
+      ghost.loop = true;
+      ghost.connect(ghp).connect(glp).connect(ghostGain).connect(dest);
+      ghost.start(t0);
+      sources.push(ghost);
+
+      // Its own periods, coprime with everything else, so the surface and the
+      // depths are never observed to move together.
+      for (const [seconds, amount] of [[29.3, 0.35], [47.9, 0.25]]) {
+        const shape = envelopeLoop(ctx, seconds, swellShape);
+        modulate(ctx, sources, shape, SURFACE.gain * amount, t0, ghostGain.gain);
+      }
     }
 
     // ── the bubbles ───────────────────────────────────────────────────────
