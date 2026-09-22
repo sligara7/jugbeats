@@ -155,14 +155,21 @@ export function rustleLoop(ctx, seconds, { brown = 0, flutter = 30, depth = 0.35
 
   // The wandering envelope: white noise with everything above `flutter` removed,
   // so it drifts at about the rate leaves turn over.
-  const a = Math.exp((-2 * Math.PI * flutter) / rate);
+  //
+  // BUILT AT A SIXTEENTH OF THE RATE AND INTERPOLATED, for the same reason
+  // ENV_RATE exists: this carries tens of hertz, so generating it per audio
+  // sample is generating detail that is then filtered away. It was half the cost
+  // of the whole loop.
+  const step = 16;
+  const mn = Math.ceil((n + fade) / step) + 2;
+  const a = Math.exp((-2 * Math.PI * flutter * step) / rate);
   let env = 0;
   let peak = 1e-9;
-  const mod = new Float32Array(n + fade);
-  for (let i = 0; i < mod.length; i++) {
+  const coarse = new Float32Array(mn);
+  for (let i = 0; i < mn; i++) {
     env = env * a + (Math.random() * 2 - 1) * (1 - a);
-    mod[i] = Math.abs(env);
-    if (mod[i] > peak) peak = mod[i];
+    coarse[i] = Math.abs(env);
+    if (coarse[i] > peak) peak = coarse[i];
   }
 
   let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
@@ -179,7 +186,11 @@ export function rustleLoop(ctx, seconds, { brown = 0, flutter = 30, depth = 0.35
     b6 = w * 0.115926;
     br = (br + 0.018 * w) / 1.018;
     const src = brown ? pink * (1 - brown) + br * 3.6 * brown : pink;
-    raw[i] = src * (floor + depth * (mod[i] / peak));
+    const k = i / step;
+    const k0 = k | 0;
+    const f = k - k0;
+    const m = (coarse[k0] * (1 - f) + coarse[k0 + 1] * f) / peak;
+    raw[i] = src * (floor + depth * m);
   }
 
   // Normalised so `flutter` and `depth` are shape controls and not volume ones,

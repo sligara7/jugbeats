@@ -116,11 +116,13 @@ const CEILING = 0.19;
 
 /** Where the canopy stops. Leaves genuinely go higher than this; eight hours
  *  beside a sleeping baby is the reason they do not here. */
-const TOP = 2400;
+const TOP = 3400;
 
-/** How far the noise is tilted from pink towards brown. Less than rain's,
- *  because a canopy IS a brighter thing than rain on canvas and pretending
- *  otherwise would leave it sounding like a distant motorway. */
+/**
+ * How far the WIND is tilted from pink towards brown. The wind is the low part
+ * of a forest and can take a tilt; the LEAVES take none at all, which is a
+ * correction rather than a detail — see the rustle bus below.
+ */
 const BROWN = 0.45;
 
 /**
@@ -200,22 +202,59 @@ runBed({
     const rustleGain = ctx.createGain();
     rustleGain.gain.setValueAtTime(0, t0);
 
+    // ⚠️ A HIGHPASS, AND ITS ABSENCE IS WHAT MADE THIS A STAMPEDE.
+    //
+    // The rustle bus had a lowpass and NOTHING UNDERNEATH IT, so a brown-tilted
+    // noise ran full-range into the mix — a heavy low rumble with slow surges in
+    // it. The owner's description was exact: "more like a stampede of buffalos".
+    //
+    // LEAVES HAVE NO LOW END AT ALL. A leaf is a few square inches of dry
+    // material; it cannot move enough air to make a low frequency. Everything
+    // below about 900 Hz in a canopy is the WIND, not the leaves, and the air
+    // layer above is where that belongs.
+    //
+    // Measured: the rustle bus sat at a spectral centroid of 642 Hz, which is
+    // below /rain/'s hiss. Banded 950-3400 and untilted it sits at 1503.
+    const rustleFloor = ctx.createBiquadFilter();
+    rustleFloor.type = 'highpass';
+    rustleFloor.frequency.setValueAtTime(950, t0);
+    rustleFloor.Q.value = 0.7;
+
     const rustleTop = ctx.createBiquadFilter();
     rustleTop.type = 'lowpass';
     rustleTop.frequency.setValueAtTime(TOP, t0);
     rustleTop.Q.value = 0.7;
-    rustleTop.connect(rustleGain).connect(dest);
+    rustleFloor.connect(rustleTop).connect(rustleGain).connect(dest);
 
     // TWO RUSTLES AT DIFFERENT FLUTTER RATES, which is what a canopy is: small
     // leaves near you turning fast, a whole hillside of them further off moving
     // more slowly. Coprime prime lengths, minutes long, so nothing repeats.
-    for (const [seconds, flutter, gain] of [[149, 34, 1.0], [181, 13, 0.55]]) {
+    // NO BROWN TILT ON THESE. Tilting towards brown is what /rain/ and
+    // /underwater/ want and it is exactly wrong here — it puts the energy where
+    // leaves have none. And both flutter rates are fast: 13 Hz was a SURGE, and
+    // a surging low rumble is a herd of something.
+    // ⚠️ AND THESE LOOPS ARE SHORT, WHERE /rain/'s ARE THREE MINUTES — which
+    // looks like a regression and is not.
+    //
+    // Long loops exist because a PATTERN can be learned: 256 raindrops in the
+    // same order every twenty seconds is something a brain starts predicting,
+    // and a brain that is predicting is awake. Fluttered noise has no pattern to
+    // learn. There are no events in it, nothing recurs, and two different
+    // stretches of it are indistinguishable.
+    //
+    // So the reason for the long loops does not apply here, and paying for them
+    // would be paying for nothing: at 149 and 181 seconds this took 1755ms to
+    // build, all of it between the tap and the first sound. At 53 and 71 it
+    // takes a quarter of that. They are still coprime primes.
+    for (const [seconds, flutter, gain] of [[53, 45, 2.67], [71, 26, 1.66]]) {
       const src = ctx.createBufferSource();
-      src.buffer = rustleLoop(ctx, seconds, { brown: BROWN, flutter, rate: 6000 });
+      // 8 kHz: Nyquist is 4000 and the band stops at 3400, so nothing audible is
+      // lost and the generation halves.
+      src.buffer = rustleLoop(ctx, seconds, { flutter, rate: 8000 });
       src.loop = true;
       const g = ctx.createGain();
       g.gain.value = gain;
-      src.connect(g).connect(rustleTop);
+      src.connect(g).connect(rustleFloor);
       src.start(t0);
       sources.push(src);
     }
