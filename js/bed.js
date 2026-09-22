@@ -106,6 +106,102 @@ export function pinkLoop(ctx, seconds, { brown = 0, rate = ctx.sampleRate } = {}
   return buf;
 }
 
+/**
+ * A RUSTLE — continuous noise whose loudness flutters, with no onsets in it.
+ *
+ * ⚠️ THIS EXISTS BECAUSE A CANOPY BUILT OUT OF TRANSIENTS SOUNDS LIKE RAIN, AND
+ * TWICE FAILED TO STOP SOUNDING LIKE RAIN.
+ *
+ * The first forest used pitched raindrops; removing the pitch did not fix it.
+ * The second used unpitched grains at seven times the density; that did not fix
+ * it either, and the owner said so both times.
+ *
+ * THE TIMBRE WAS NEVER THE PROBLEM — THE STATISTICS WERE. Rain is discrete
+ * events, randomly spaced, each with a sharp onset, scattered over a noise bed.
+ * That IS the signature, and anything with those statistics reads as rain
+ * whatever each event is made of. Measured: grains at 240 a second produce 10.8
+ * sharp onsets a second, and this produces 1.5.
+ *
+ * A LEAF DOES NOT STRIKE ANYTHING. It flutters — repeated glancing contact, too
+ * fast and too continuous to hear as separate events — and a whole canopy of
+ * them is one continuous sound that is always changing loudness. So this is not
+ * events at all: it is noise multiplied by a wandering envelope, and the "shshsh"
+ * is the wander.
+ *
+ * `flutter` is how fast that envelope moves, in Hz. Around 30 is leaves; much
+ * slower becomes surf, much faster becomes a buzz.
+ *
+ * ⚠️ AND `depth` IS SHALLOW ON PURPOSE, WHICH IS THE THIRD THING THIS PAGE GOT
+ * WRONG. The first flutter used depth 0.88 — the level swinging almost to
+ * silence — on the reasoning that more movement is more alive. Measured against
+ * a control of plain unmodulated noise, it produced 7.5 excess onsets a second,
+ * and the grains it replaced produced 7.4. IT WAS NO BETTER, because modulation
+ * that deep does not remove events, it MANUFACTURES them: every dip to near
+ * silence gives the next rise a sharp edge, and a sharp edge is an onset.
+ *
+ * At 0.35 the excess is 0.8 — statistically indistinguishable from noise that is
+ * not modulated at all, while still audibly breathing. Continuous first,
+ * fluttering second.
+ *
+ * THE CONTROL IS THE POINT. The first measurement of this had no control in it
+ * and read 1.5 against the grains' 10.8, which looked like a triumph. Plain
+ * brown noise alone reads 6.2 on the same detector — most of what was being
+ * counted was the noise, not the events.
+ */
+export function rustleLoop(ctx, seconds, { brown = 0, flutter = 30, depth = 0.35, floor = 0.65, rate = ctx.sampleRate } = {}) {
+  const n = Math.floor(seconds * rate);
+  const fade = Math.floor(0.4 * rate);
+  const raw = new Float32Array(n + fade);
+
+  // The wandering envelope: white noise with everything above `flutter` removed,
+  // so it drifts at about the rate leaves turn over.
+  const a = Math.exp((-2 * Math.PI * flutter) / rate);
+  let env = 0;
+  let peak = 1e-9;
+  const mod = new Float32Array(n + fade);
+  for (let i = 0; i < mod.length; i++) {
+    env = env * a + (Math.random() * 2 - 1) * (1 - a);
+    mod[i] = Math.abs(env);
+    if (mod[i] > peak) peak = mod[i];
+  }
+
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  let br = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + w * 0.0555179;
+    b1 = 0.99332 * b1 + w * 0.0750759;
+    b2 = 0.96900 * b2 + w * 0.1538520;
+    b3 = 0.86650 * b3 + w * 0.3104856;
+    b4 = 0.55000 * b4 + w * 0.5329522;
+    b5 = -0.7616 * b5 - w * 0.0168980;
+    const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+    b6 = w * 0.115926;
+    br = (br + 0.018 * w) / 1.018;
+    const src = brown ? pink * (1 - brown) + br * 3.6 * brown : pink;
+    raw[i] = src * (floor + depth * (mod[i] / peak));
+  }
+
+  // Normalised so `flutter` and `depth` are shape controls and not volume ones,
+  // which is the same discipline pinkLoop's brown tilt follows.
+  let sum = 0;
+  for (let i = 0; i < raw.length; i++) sum += raw[i] * raw[i];
+  const rms = Math.sqrt(sum / raw.length);
+  if (rms > 0) {
+    const g = 0.197 / rms;
+    for (let i = 0; i < raw.length; i++) raw[i] *= g;
+  }
+
+  const buf = ctx.createBuffer(1, n, rate);
+  const out = buf.getChannelData(0);
+  out.set(raw.subarray(0, n));
+  for (let i = 0; i < fade; i++) {
+    const t = i / fade;
+    out[i] = out[i] * Math.sqrt(t) + raw[n + i] * Math.sqrt(1 - t);
+  }
+  return buf;
+}
+
 /** Envelope buffers are slower than anything audible, so they are built at a low
  *  rate to keep them small. The browser resamples, which for a slow curve is
  *  exactly what you want. */

@@ -33,26 +33,40 @@
   envelope as the hiss, so the two move together without anything coordinating
   them.
 
-  ── THE FIRST VERSION SOUNDED LIKE RAIN, AND HERE IS WHY ───────────────────
+  ── IT SOUNDED LIKE RAIN TWICE, AND THE SECOND TIME IS THE INSTRUCTIVE ONE ──
 
-  The owner, on hearing it: "sounds like wind or waves with rain drops, not
-  necessarily leaves in trees."
+  First version: "sounds like wind or waves with rain drops". It was literally
+  made of raindrops — /rain/'s transient machinery puts a short excitation
+  through a RESONATOR, so every event came out pitched.
 
-  IT WAS BUILT OUT OF RAINDROPS. The transient machinery this page borrowed from
-  /rain/ puts a short excitation through a RESONATOR, so every event comes out
-  PITCHED — because a drop striking something has a note, the note of the thing
-  it struck. A LEAF IS NOT A RESONATOR. Nothing about a leaf turning over rings;
-  it is a scrape. Measured on a single event: a raindrop scores 0.96 for
-  periodicity, and a leaf now scores 0.27.
+  So the pitch was removed (a raindrop scores 0.96 for periodicity, an unpitched
+  grain 0.27) and the density raised sevenfold so the events would merge rather
+  than be countable.
 
-  AND THEY WERE COUNTABLE, which was the other half. At 34 a second each event
-  was separately audible, and separately audible events ARE drops however they
-  are shaped. Leaves do not arrive one at a time — a gust turns hundreds at once
-  and they merge. 380 a second now, and the merge IS the "shshsh".
+  IT STILL SOUNDED LIKE RAIN. "the forest still sounds like rain."
 
-  WHICH MEANT THE SMOOTH NOISE LAYER HAD TO SHRINK TOO. A band of hiss plus
-  countable ticks is "wind with rain in it" — a fair description of what he
-  heard. The canopy is carried by the grains now, and the smooth layer is glue.
+  THE TIMBRE WAS NEVER THE PROBLEM. THE STATISTICS WERE. Rain is discrete events,
+  randomly spaced, each with a sharp onset, over a noise bed — and ANYTHING with
+  those statistics reads as rain whatever the events are made of. Unpitched
+  grains at 240 a second are still discrete events, randomly spaced, with sharp
+  onsets. Measured: 10.8 sharp onsets a second. Rain by construction.
+
+  A LEAF DOES NOT STRIKE ANYTHING. It flutters — repeated glancing contact, far
+  too fast and too continuous to hear as separate events — and a canopy of them
+  is one continuous sound that never stops changing loudness. So the rustle is
+  not events at all now: it is noise multiplied by a wandering envelope
+  (rustleLoop in bed.js), and the "shshsh" IS the wander.
+
+  AND THE FIRST ATTEMPT AT THAT WAS ALSO WRONG, measured against a control of
+  plain unmodulated noise: swinging the level almost to silence produced 7.5
+  excess onsets a second against the grains' 7.4. No better at all, because
+  modulation that deep MANUFACTURES events — every dip to near silence gives the
+  next rise a sharp edge. Shallow, at 0.35, measures 0.8: indistinguishable from
+  noise nobody modulated, while still breathing.
+
+  TWO WRONG ANSWERS BEFORE THE RIGHT ONE, and both were wrong the same way: they
+  changed what the events sounded like, when the problem was that there WERE
+  events.
 -->
 
 <meta name="theme-color" content="#070b07">
@@ -95,7 +109,7 @@
 </main>
 
 <script type="module">
-import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, transientLoop } from '../js/bed.js';
+import { runBed, pinkLoop, envelopeLoop, modulate, noiseLayer, rustleLoop } from '../js/bed.js';
 
 /** In line with the other beds. Leaves sit higher than rain, so no higher. */
 const CEILING = 0.19;
@@ -170,9 +184,8 @@ runBed({
     lp.Q.value = 0.7;
     lp.frequency.setValueAtTime(TOP * 0.72, t0);
 
-    // SMALLER THAN IT WAS. A smooth noise band plus countable ticks is "wind
-    // with rain in it", which is exactly what the first version sounded like.
-    // The canopy is carried by the grains themselves now; this is only glue.
+    // GLUE ONLY. The canopy is the rustle layers below; this is a thin bed of
+    // smooth noise underneath them so the flutter has something to sit on.
     const leaves = ctx.createBufferSource();
     leaves.buffer = pinkLoop(ctx, 13.9, { brown: BROWN });
     leaves.loop = true;
@@ -193,29 +206,16 @@ runBed({
     rustleTop.Q.value = 0.7;
     rustleTop.connect(rustleGain).connect(dest);
 
-    for (const cfg of [
-      // ⚠️ UNPITCHED, AND FAR DENSER THAN ANYTHING ELSE IN THE FAMILY. Both of
-      // those are corrections; the header says what they are correcting.
-      //
-      // `tone: 0` removes the resonator entirely, so each event is a crinkle
-      // with no note in it. Measured, a raindrop scores 0.96 on periodicity and
-      // one of these scores 0.27 — the difference between a struck thing and a
-      // scraped one.
-      //
-      // And 380 a second against rain's 13, because individually countable
-      // events ARE raindrops however they are shaped. At this density they
-      // overlap into a texture, and the texture is the "shshsh".
-      // `rate: 6000` because the canopy stops at 2.4 kHz and everything above
-      // that is stored only to be filtered away. Halves both the buffer and the
-      // grains in it, which is most of the difference between a forest that
-      // takes a second to build and one that takes a quarter of that.
-      { seconds: 149, perSecond: 240, decay: 0.0035, level: 0.50, tone: 0, rate: 6000 },
-      { seconds: 181, perSecond: 95, decay: 0.0075, level: 0.34, tone: 0, rate: 6000 },
-    ]) {
+    // TWO RUSTLES AT DIFFERENT FLUTTER RATES, which is what a canopy is: small
+    // leaves near you turning fast, a whole hillside of them further off moving
+    // more slowly. Coprime prime lengths, minutes long, so nothing repeats.
+    for (const [seconds, flutter, gain] of [[149, 34, 1.0], [181, 13, 0.55]]) {
       const src = ctx.createBufferSource();
-      src.buffer = transientLoop(ctx, cfg);
+      src.buffer = rustleLoop(ctx, seconds, { brown: BROWN, flutter, rate: 6000 });
       src.loop = true;
-      src.connect(rustleTop);
+      const g = ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g).connect(rustleTop);
       src.start(t0);
       sources.push(src);
     }
