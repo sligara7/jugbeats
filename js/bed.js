@@ -227,8 +227,23 @@ export const ENV_RATE = 8000;
  * same way, which is how a bed gets weather without anybody scheduling it.
  */
 export function envelopeLoop(ctx, seconds, shape, rate = ENV_RATE) {
-  const n = Math.floor(seconds * rate);
-  const buf = ctx.createBuffer(1, n, rate);
+  // ⚠️ CLAMPED, BECAUSE A RATE BELOW THIS THROWS AND TAKES THE WHOLE BED WITH IT.
+  //
+  // createBuffer refuses a sample rate under the implementation minimum — the
+  // spec only guarantees 8000 Hz and up — and the exception lands inside build(),
+  // before anything is connected or the page marks itself playing. The tap does
+  // nothing at all, with no sound and no visible error.
+  //
+  // THREE BEDS SHIPPED BROKEN THIS WAY on 2026-09-21: /stream/, /forest/ and
+  // /underwater/ all asked for 400 Hz, on the perfectly sound reasoning that an
+  // envelope carrying a fraction of a hertz does not need audio resolution. The
+  // reasoning was right and the API does not care.
+  //
+  // Clamping rather than refusing: the shape is a continuous function, so
+  // sampling it more finely than asked is always correct and only costs memory.
+  const safe = Math.max(ENV_RATE, rate);
+  const n = Math.floor(seconds * safe);
+  const buf = ctx.createBuffer(1, n, safe);
   const out = buf.getChannelData(0);
   for (let i = 0; i < n; i++) out[i] = shape(i / n);
   return buf;
