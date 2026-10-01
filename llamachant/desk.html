@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Llamachant — desk</title>
+
+<!--
+  THE LLAMACHANT DESK — where her bedtime sound is mixed, by ear
+  (dec:idea-her-own-heavenly-bed).
+
+  The settings travel in the URL, the same way her tracks do. "Use this for
+  bedtime" opens the bed, /llamachant/, with the same settings in its link.
+  The line under the desk shows those settings in a form you can read.
+
+  THIS IS NOT THE BED. There is no timer and no fade-out here. The bed is
+  the same layers with the faders fixed, built by js/llamachant.js for both
+  pages, so what is chosen here is what plays there.
+-->
+
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #eef0f6;
+    --dim: #8e93a8;
+    --accent: #c9b8ff;
+    --bg: #0a0912;
+    --line: #ffffff1c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 500 16px/1.45 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding: calc(20px + env(safe-area-inset-top, 0px)) 16px calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+  main { max-width: 30em; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  .sub { margin: 0 0 18px; color: var(--dim); font-size: 15px; }
+
+  .play {
+    appearance: none; font: inherit; font-size: 19px; font-weight: 600;
+    width: 100%; padding: 18px; border-radius: 16px; cursor: pointer;
+    border: 1px solid var(--accent); background: #c9b8ff14; color: var(--accent);
+  }
+  .play[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+  .play:disabled { opacity: 0.5; }
+  .err { color: #ff90ab; font-size: 14px; min-height: 1em; margin: 8px 0 0; }
+
+  section { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+  h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+  .what { margin: 0 0 8px; color: var(--dim); font-size: 13.5px; }
+
+  label.row { display: block; margin: 6px 0 10px; }
+  label.row span { display: flex; justify-content: space-between; font-size: 14px; color: var(--dim); }
+  input[type="range"] { width: 100%; margin: 6px 0 0; accent-color: var(--accent); height: 28px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+  .chips button {
+    appearance: none; font: inherit; font-size: 15px; cursor: pointer;
+    min-width: 3.2em; padding: 9px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: #ffffff0a; color: var(--ink);
+  }
+  .chips button[aria-pressed="true"] { border-color: var(--accent); background: #c9b8ff26; color: var(--accent); }
+
+  .code { padding-bottom: 0; }
+  .code .label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+  code {
+    display: block; margin: 8px 0 10px; padding: 10px 12px; border-radius: 10px;
+    background: #ffffff0d; font: 13px/1.5 ui-monospace, Menlo, monospace;
+    overflow-wrap: anywhere; user-select: all;
+  }
+  .use {
+    display: block; text-align: center; margin: 0 0 10px; padding: 14px; border-radius: 14px;
+    border: 1px solid var(--accent); color: var(--accent); text-decoration: none; font-weight: 600;
+  }
+  #copy {
+    appearance: none; font: inherit; font-size: 15px; cursor: pointer;
+    padding: 10px 18px; border-radius: 999px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Llamachant</h1>
+  <p class="sub">The mixing desk. Press play and move the sliders until it sounds right for bed. Then press <b>use this for bedtime</b>.</p>
+
+  <button class="play" id="play" aria-pressed="false">play</button>
+  <p class="err" id="err"></p>
+
+  <section>
+    <h2>The noise underneath</h2>
+    <p class="what">Steady, like a fan or the sea a long way off.</p>
+    <label class="row"><span>loudness <b data-show="bed"></b></span><input type="range" min="0" max="100" data-k="bed"></label>
+    <label class="row"><span>pink ↔ brown <b data-show="dark"></b></span><input type="range" min="0" max="100" data-k="dark"></label>
+  </section>
+
+  <section>
+    <h2>Whispered choir</h2>
+    <p class="what">A choir breathing a vowel, with no notes in it.</p>
+    <label class="row"><span>loudness <b data-show="choir"></b></span><input type="range" min="0" max="100" data-k="choir"></label>
+    <div class="chips" data-k="vowel">
+      <button data-v="oo">oo</button><button data-v="oh">oh</button><button data-v="ah">ah</button><button data-v="drift">drifting</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Om</h2>
+    <p class="what">A low hum like monks, made out of noise.</p>
+    <label class="row"><span>loudness <b data-show="om"></b></span><input type="range" min="0" max="100" data-k="om"></label>
+  </section>
+
+  <section>
+    <h2>Overtone chant</h2>
+    <p class="what">A deep buzz with high whistles slowly floating out of it.</p>
+    <label class="row"><span>loudness <b data-show="chant"></b></span><input type="range" min="0" max="100" data-k="chant"></label>
+  </section>
+
+  <section>
+    <h2>Singing bowl</h2>
+    <p class="what">Rubbed rings steadily. Struck rings out about every half minute.</p>
+    <label class="row"><span>rubbed <b data-show="bowl"></b></span><input type="range" min="0" max="100" data-k="bowl"></label>
+    <label class="row"><span>struck <b data-show="strike"></b></span><input type="range" min="0" max="100" data-k="strike"></label>
+  </section>
+
+  <section>
+    <h2>A melody, sung by noise</h2>
+    <p class="what">A very slow tune made only of hiss. Each note is a band of noise centred on its pitch.</p>
+    <label class="row"><span>loudness <b data-show="melody"></b></span><input type="range" min="0" max="100" data-k="melody"></label>
+    <div class="chips" data-k="tune">
+      <button data-v="emmanuel">O come, Emmanuel</button><button data-v="lullaby">Brahms' Lullaby</button>
+    </div>
+    <label class="row"><span>noise ↔ note <b data-show="clear"></b></span><input type="range" min="0" max="100" data-k="clear"></label>
+    <label class="row"><span>slowness <b data-show="slow"></b></span><input type="range" min="0" max="100" data-k="slow"></label>
+  </section>
+
+  <section>
+    <h2>All of it</h2>
+    <p class="what">Breathing swells everything in for four seconds and out for six, so you can breathe along.</p>
+    <label class="row"><span>breathing <b data-show="breathe"></b></span><input type="range" min="0" max="100" data-k="breathe"></label>
+    <label class="row"><span>big room <b data-show="room"></b></span><input type="range" min="0" max="100" data-k="room"></label>
+    <div class="label" style="font-size:14px;color:var(--dim)">key</div>
+    <div class="chips" data-k="key">
+      <button data-v="C">C</button><button data-v="D">D</button><button data-v="Eb">E♭</button><button data-v="F">F</button><button data-v="G">G</button><button data-v="A">A</button>
+    </div>
+  </section>
+
+  <section class="code">
+    <div class="label">settings</div>
+    <code id="code"></code>
+    <a class="use" id="use" href="./">use this for bedtime ▸</a>
+    <button id="copy">copy the link</button>
+  </section>
+</main>
+
+<script type="module">
+import {
+  buildDesk, normalise, fromParams, toParams, secondsPerBeat, limiter, OUTPUT_GAIN,
+} from '../js/llamachant.js';
+import { silenceUrl } from '../js/bed.js';
+
+const FADE_IN = 4;
+const FADE_OUT = 1.5;
+
+/** What each number under a slider says. Slowness is shown as the seconds a
+ *  beat it actually gives, since that is the thing being chosen. */
+const SHOW = { slow: (v) => `${secondsPerBeat(v).toFixed(1)} s a beat` };
+
+/**
+ * The desk page, with everything it touches passed in. It owns one piece of
+ * state, the current settings, and one optional running session.
+ */
+function deskPage({ doc, win, build }) {
+  const $ = (sel) => doc.querySelector(sel);
+  let settings = fromParams(new URLSearchParams(win.location.hash.slice(1)));
+  let session = null;
+
+  function show() {
+    for (const input of doc.querySelectorAll('input[data-k]')) {
+      input.value = Math.round(settings[input.dataset.k] * 100);
+    }
+    for (const b of doc.querySelectorAll('[data-show]')) {
+      const k = b.dataset.show;
+      b.textContent = SHOW[k] ? SHOW[k](settings[k]) : Math.round(settings[k] * 100);
+    }
+    for (const group of doc.querySelectorAll('.chips')) {
+      for (const btn of group.querySelectorAll('button')) {
+        btn.setAttribute('aria-pressed', String(btn.dataset.v === settings[group.dataset.k]));
+      }
+    }
+    const params = toParams(settings);
+    $('#code').textContent = params.toString().replaceAll('&', ' ');
+    win.history.replaceState(null, '', `#${params}`);
+    $('#use').href = `./#${params}`;
+  }
+
+  function change(patch) {
+    settings = normalise({ ...settings, ...patch });
+    show();
+    if (session) session.desk.set(settings);
+  }
+
+  function start() {
+    const Ctx = win.AudioContext || win.webkitAudioContext;
+    if (!Ctx) { $('#err').textContent = 'This browser cannot play sound.'; return; }
+    try { if (win.navigator.audioSession) win.navigator.audioSession.type = 'playback'; } catch (e) {}
+
+    // Created and resumed INSIDE the tap, which iOS insists on. The heavy
+    // building waits a frame so the button can say so first.
+    const ctx = new Ctx();
+    ctx.resume();
+    const keepAlive = doc.createElement('audio');
+    const silence = silenceUrl();
+    keepAlive.src = silence;
+    keepAlive.loop = true;
+    keepAlive.volume = 0.001;
+    keepAlive.setAttribute('playsinline', '');
+    doc.body.appendChild(keepAlive);
+    keepAlive.play().catch(() => {});
+
+    const btn = $('#play');
+    btn.disabled = true;
+    btn.textContent = 'getting ready…';
+
+    win.setTimeout(() => {
+      const sources = [];
+      // The same output stage the bed uses, so the two sound the same.
+      const master = ctx.createGain();
+      master.gain.value = 0;
+      master.connect(limiter(ctx, ctx.destination));
+
+      let desk;
+      try {
+        desk = build(ctx, master, ctx.currentTime + 0.05, sources, settings);
+      } catch (err) {
+        $('#err').textContent = `Could not start: ${err.message}`;
+        btn.disabled = false;
+        btn.textContent = 'play';
+        return;
+      }
+      // The fade starts after building, not before, so a slow phone does not
+      // skip most of it while it was busy.
+      const now = ctx.currentTime;
+      master.gain.setValueAtTime(0.0001, now);
+      master.gain.linearRampToValueAtTime(OUTPUT_GAIN, now + FADE_IN);
+
+      session = { ctx, master, sources, desk, keepAlive, silence };
+      btn.disabled = false;
+      btn.textContent = 'stop';
+      btn.setAttribute('aria-pressed', 'true');
+    }, 30);
+  }
+
+  function stop() {
+    const s = session;
+    session = null;
+    const btn = $('#play');
+    btn.textContent = 'play';
+    btn.setAttribute('aria-pressed', 'false');
+    const now = s.ctx.currentTime;
+    s.master.gain.cancelScheduledValues(now);
+    s.master.gain.setValueAtTime(s.master.gain.value, now);
+    s.master.gain.linearRampToValueAtTime(0.0001, now + FADE_OUT);
+    win.setTimeout(() => {
+      s.sources.forEach((src) => { try { src.stop(); } catch (e) {} });
+      s.keepAlive.pause();
+      s.keepAlive.remove();
+      URL.revokeObjectURL(s.silence);
+      s.ctx.close();
+    }, FADE_OUT * 1000 + 100);
+  }
+
+  $('#play').addEventListener('click', () => (session ? stop() : start()));
+
+  for (const input of doc.querySelectorAll('input[data-k]')) {
+    input.addEventListener('input', () => change({ [input.dataset.k]: Number(input.value) / 100 }));
+  }
+  for (const group of doc.querySelectorAll('.chips')) {
+    group.addEventListener('click', (e) => {
+      const v = e.target.closest('button')?.dataset.v;
+      if (v) change({ [group.dataset.k]: v });
+    });
+  }
+
+  $('#copy').addEventListener('click', async () => {
+    const text = win.location.href;
+    try {
+      await win.navigator.clipboard.writeText(text);
+      $('#copy').textContent = 'copied';
+    } catch (e) {
+      // No clipboard (a plain-http preview, an old browser): the line above
+      // is user-select: all, so one tap selects it for a manual copy.
+      $('#copy').textContent = 'tap the line above to select it';
+    }
+    win.setTimeout(() => { $('#copy').textContent = 'copy the link'; }, 2000);
+  });
+
+  // If the phone suspended audio while the page was away, coming back
+  // resumes it rather than leaving it silent.
+  doc.addEventListener('visibilitychange', () => {
+    if (!doc.hidden && session && session.ctx.state === 'suspended') session.ctx.resume();
+  });
+
+  show();
+}
+
+deskPage({ doc: document, win: window, build: buildDesk });
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Llamachant</title>
+
+<!--
+  LLAMACHANT — her own bedtime sound, and the first bed in this family whose
+  listener is the nine-year-old herself rather than her sister
+  (dec:idea-her-own-heavenly-bed). Named by her.
+
+  Monks humming an om made of noise, a whispered choir on "oo", an overtone
+  chant, and singing bowls rubbed and struck, over noise leaning almost all
+  the way to brown. The mix is the one her dad chose on the desk
+  (desk.html) on 2026-09-30.
+
+  BECAUSE SHE IS THE LISTENER, THE BABY'S RULES DO NOT APPLY HERE. The struck
+  bowl is an accent and the chant's whistles are pitched, and both are
+  ruled out of the baby's beds by req:a-steady-bed-not-a-tune. They are in
+  this one on purpose.
+
+  THE SETTINGS CAN COME IN THE LINK. The desk's "use this for bedtime"
+  opens this page with its mix in the URL. With no settings in the link, the
+  defaults in js/llamachant.js are used, and those are his favourite mix.
+-->
+
+<meta name="theme-color" content="#0a0912">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Llamachant">
+<meta property="og:description" content="Monks, a whispered choir and singing bowls, made out of soft noise. Pick how long and go to sleep.">
+<meta property="og:url" content="https://sligara7.github.io/jugbeats/llamachant/">
+
+<link rel="stylesheet" href="../css/bed.css">
+<style>
+  :root { --accent: #c9b8ff; --bg: #0a0912; }
+  .tune { display: inline-block; margin-top: 22px; color: var(--dim); font-size: 14px; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<main>
+  <div id="start">
+    <h1>Llamachant</h1>
+    <p class="sub">Monks humming, a whispered choir and singing bowls, all made of soft noise.</p>
+
+    <p class="place">Put the phone by your bed and turn it down until it is just quiet.
+      You can lock it. It keeps going and fades away on its own.</p>
+
+    <div class="label">play for</div>
+    <div class="times">
+      <button data-min="15">15 min</button>
+      <button data-min="30">30 min</button>
+      <button data-min="60">1 hour</button>
+      <button data-min="120">2 hours</button>
+      <button data-min="240">4 hours</button>
+      <button data-min="480">8 hours</button>
+    </div>
+    <p class="err" id="err"></p>
+    <a class="tune" id="tune" href="desk.html">change the sound ▸</a>
+  </div>
+
+  <div id="playing">
+    <div class="left">stops in</div>
+    <div class="clock" id="clock">—</div>
+    <p class="hint">You can lock the phone. It keeps going, and fades out on its own.</p>
+    <button id="stop">stop now</button>
+  </div>
+</main>
+
+<script type="module">
+import { runBed } from '../js/bed.js';
+import { buildDesk, fromParams, toParams, limiter, OUTPUT_GAIN } from '../js/llamachant.js';
+
+const settings = fromParams(new URLSearchParams(location.hash.slice(1)));
+document.getElementById('tune').href = `desk.html#${toParams(settings)}`;
+
+runBed({
+  title: 'Llamachant',
+  // THE LEVEL IS SET INSIDE, NOT HERE. The desk this mix was chosen on ends in
+  // OUTPUT_GAIN and a limiter, and the limiter really works at this mix, so
+  // the bed ends in the same two things to sound the same. runBed's ceiling is
+  // therefore unity, and this page has no volume control for the same reason
+  // the other beds have none.
+  ceiling: 1,
+  fadeIn: 8,
+  fadeOut: 90,
+
+  build(ctx, dest, t0, sources) {
+    const out = ctx.createGain();
+    out.gain.value = OUTPUT_GAIN;
+    out.connect(limiter(ctx, dest));
+    // `live: false`: only the layers this mix can be heard to use are built.
+    buildDesk(ctx, out, t0, sources, settings, { live: false });
+  },
+});
+</script>
+</body>
+</html>
