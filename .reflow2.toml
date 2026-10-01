@@ -1,0 +1,8 @@
+# .reflow2.toml — which design this repository implements, and where it lives.
+# Committed, and it holds no secret. reflow2 0.73.0 and later read it: a session
+# started in this folder attaches to this design and never opens a local store.
+# Since 2026-10-01 musicjug's design is hosted on flo2.io
+# (chg:musicjugs-design-moves-to-flo2-io-2026-10-01).
+[design]
+id      = "a65a8602a2aff9d3"
+address = "https://api.flo2.io/g/a65a8602a2aff9d3/mcp"
